@@ -25,6 +25,8 @@ export const PET_DEFAULT_THEME: PetTheme = 'auto';
 export const PET_PACK_ID_MAX = 64;
 const PACK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export const PET_STAT_MAX = 100;
+/** Lifetime feed count is a keepsake, not a resource; only a sanity cap. */
+export const MEALS_MAX = 1_000_000;
 export const MAX_LEVEL = 99;
 export const XP_BASE = 80;
 export const XP_STEP = 40;
@@ -44,6 +46,8 @@ export interface PetState {
   fullness: number;
   mood: number;
   energy: number;
+  /** Lifetime feed count, shown as bowls eaten. It never decays. */
+  meals: number;
   /** Selected bundled appearance; ignored while a custom `sprite` is set. */
   skin: PetSkin;
   /** DeepSeek only: which of the two supplied forms is drawn. */
@@ -142,6 +146,7 @@ export function createDefaultPet(now = Date.now(), skin: PetSkin = PET_DEFAULT_S
     fullness: 82,
     mood: 76,
     energy: 70,
+    meals: 0,
     skin: isPetSkin(skin) ? skin : PET_DEFAULT_SKIN,
     deepseekForm: PET_DEFAULT_DEEPSEEK_FORM,
     theme: PET_DEFAULT_THEME,
@@ -184,6 +189,9 @@ export function parsePetState(raw: unknown, now = Date.now()): PetState {
     fullness: stat('fullness'),
     mood: stat('mood'),
     energy: stat('energy'),
+    meals: Number.isFinite(value.meals)
+      ? clamp(Math.trunc(value.meals as number), 0, MEALS_MAX)
+      : base.meals,
     skin: isPetSkin(value.skin) ? value.skin : base.skin,
     deepseekForm: isDeepSeekForm(value.deepseekForm) ? value.deepseekForm : base.deepseekForm,
     theme: isPetTheme(value.theme) ? value.theme : base.theme,
@@ -242,6 +250,7 @@ export function applyAction(
       fullness: clamp(state.fullness + effect.fullness, 0, PET_STAT_MAX),
       mood: clamp(state.mood + effect.mood, 0, PET_STAT_MAX),
       energy: clamp(state.energy + effect.energy, 0, PET_STAT_MAX),
+      meals: action === 'feed' ? clamp(state.meals + 1, 0, MEALS_MAX) : state.meals,
       level: xp.level,
       xp: xp.xp,
       lastSeen: now,
@@ -260,4 +269,19 @@ export function petStatus(state: Pick<PetState, 'fullness' | 'mood' | 'energy'>)
   if (state.mood < 40) return 'bored';
   if (state.fullness >= 70 && state.mood >= 65 && state.energy >= 60) return 'happy';
   return 'ok';
+}
+
+/**
+ * The rice-eating cutscene uses the bundled DeepSeek chibi artwork only.
+ * A custom sprite or a DyberPet pack must keep showing its own art.
+ */
+export function hasRiceFeast(
+  state: Pick<PetState, 'skin' | 'deepseekForm' | 'sprite' | 'packId'>
+): boolean {
+  return (
+    state.skin === 'deepseek' &&
+    state.deepseekForm === 'chibi' &&
+    state.sprite === null &&
+    state.packId === null
+  );
 }

@@ -7,6 +7,38 @@ const ISLAND =
   '/?settings=' +
   encodeURIComponent('{"island":true,"thresholds":{"warn":80,"critical":95}}');
 
+test('the island rail shows a hungry pet and its bowl count', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'island.plugin.pet',
+      JSON.stringify({
+        version: 1,
+        name: 'Mochi',
+        level: 1,
+        xp: 0,
+        fullness: 10,
+        mood: 60,
+        energy: 60,
+        meals: 3,
+        skin: 'deepseek',
+        deepseekForm: 'chibi',
+        theme: 'auto',
+        packId: null,
+        lastSeen: Date.now(),
+        sprite: null,
+      })
+    );
+  });
+  await page.goto(ISLAND);
+  await page.locator('.stage').hover();
+
+  const petTool = page
+    .locator('.island-tools')
+    .getByRole('button', { name: 'Desktop pet', exact: true });
+  await expect(petTool).toHaveAttribute('title', 'Desktop pet — Hungry · Bowls eaten: 3');
+  await expect(petTool.locator('.tool-dot.need')).toBeVisible();
+});
+
 test('desktop pet opens with stats, switches skins/forms and reacts to feeding', async ({
   page,
 }) => {
@@ -62,7 +94,14 @@ test('desktop pet opens with stats, switches skins/forms and reacts to feeding',
     'aria-valuenow',
     '100'
   );
-  await expect(card).toHaveAttribute('src', /\/pet\/deepseek-chibi-feed\.webp$/);
+  // The bundled DeepSeek chibi swaps the sticker card for the rice cutscene.
+  const feast = panel.getByTestId('rice-feast');
+  await expect(feast).toBeVisible();
+  await expect(feast.locator('img.rice-fish')).toHaveAttribute(
+    'src',
+    /\/pet\/deepseek-chibi-rice\.webp$/
+  );
+  await expect(panel.locator('.meals-chip')).toHaveAttribute('aria-label', 'Bowls eaten: 1');
 
   // The detached window is opt-in; enabling it reveals the wander switch.
   const desktop = panel.locator('.desktop');

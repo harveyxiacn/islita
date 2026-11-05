@@ -57,14 +57,23 @@
   import { detectRingEvents, levelsOf, windowKey, type RingEvent, type RingEventKind, type WindowLevel } from '$lib/ring-events';
   import { handlePeak, handleSegments, labelLayout, type LabelLayout } from '$lib/sidebar-visuals';
   import { t, tDyn } from '$lib/i18n/i18n.svelte';
-  import { PET_PLUGIN_ID, parsePetState, type PetAction, type PetState } from '$lib/pet/pet';
+  import {
+    PET_PLUGIN_ID,
+    advancePet,
+    parsePetState,
+    petStatus,
+    type PetAction,
+    type PetState,
+    type PetStatus,
+  } from '$lib/pet/pet';
   import { isPetAction } from '$lib/pet/desktop';
   import { petVoice, quotaSituation, sayKey, speechAvatar, type PetVoice } from '$lib/pet/speech';
   import { petSpeech } from '$lib/pet/speech.svelte';
   import { attention } from '$lib/plugins/attention.svelte';
   import { enabledPlugins } from '$lib/plugins/enabled';
   import { pluginById, ISLAND_PLUGINS } from '$lib/plugins/registry';
-  import { readPluginState, writePluginState } from '$lib/plugins/storage';
+  import type { IslandPlugin } from '$lib/plugins/types';
+  import { pluginStorageKey, readPluginState, writePluginState } from '$lib/plugins/storage';
   import { handleColorOf, rings, type RingItem } from '$lib/stores/rings.svelte';
   import { settings } from '$lib/stores/settings.svelte';
   import { snapshot } from '$lib/stores/snapshot.svelte';
@@ -88,6 +97,22 @@
       (_, i) => i
     )
   );
+
+  /**
+   * The pet saves itself outside Svelte (localStorage), so nothing re-renders
+   * on its own. Either window's write bumps this counter and the rail's badge
+   * and tooltip re-read the pet.
+   */
+  let petRevision = $state(0);
+  /** Current needs for the rail dot; null until the user has used the pet. */
+  const petGlance = $derived.by((): { mood: PetStatus; meals: number } | null => {
+    // Read (do not use) the counter: it is the only invalidation signal.
+    petRevision;
+    const pet = savedPet();
+    if (!pet) return null;
+    const current = advancePet(pet, Date.now()).state;
+    return { mood: petStatus(current), meals: current.meals };
+  });
 
   /** platform-owned expand/collapse state; only meaningful when autoHide is on */
   let expanded = $state(true);
@@ -418,6 +443,7 @@
       const current = savedPet();
       if (current && incoming.lastSeen <= current.lastSeen) return;
       writePluginState(PET_PLUGIN_ID, incoming);
+      petRevision += 1;
       if (isPetAction(payload.action)) petSpeech.note(payload.action);
     }).then((u) => (disposed ? u() : (unPetState = u)));
     void listen<null>('pet-state-request', () => {
@@ -426,12 +452,26 @@
       void emitWindowEvent('pet', 'pet-state', { state: parsePetState(raw, Date.now()) });
     }).then((u) => (disposed ? u() : (unPetRequest = u)));
 
+    // The pet saves itself outside Svelte. A write in this window announces
+    // itself with a custom event; a write in the detached window arrives as a
+    // storage event (when the webviews share storage at all).
+    const onPluginState = (event: Event) => {
+      if ((event as CustomEvent<unknown>).detail === PET_PLUGIN_ID) petRevision += 1;
+    };
+    const onPetStorage = (event: StorageEvent) => {
+      if (event.key === pluginStorageKey(PET_PLUGIN_ID)) petRevision += 1;
+    };
+    window.addEventListener('island-plugin-state', onPluginState);
+    window.addEventListener('storage', onPetStorage);
+
     return () => {
       disposed = true;
       un?.();
       unTask?.();
       unPetState?.();
       unPetRequest?.();
+      window.removeEventListener('island-plugin-state', onPluginState);
+      window.removeEventListener('storage', onPetStorage);
       clearTimeout(fxTimer);
       clearTimeout(islandCollapseTimer);
       clearTimeout(panelCloseTimer);
@@ -686,6 +726,19 @@
     return pet ? petVoice(pet.skin, pet.deepseekForm) : null;
   }
 
+  /**
+   * The rail tooltip carries the pet's current need, so a hungry or sleepy pet
+   * is visible without opening the panel. Other modules keep their plain name.
+   */
+  function pluginTooltip(plugin: IslandPlugin, active: boolean): string {
+    const label = tDyn(plugin.label);
+    if (active) return `${label} — ${t('island.closePanel')}`;
+    if (plugin.id !== 'pet' || !petGlance) return label;
+    const status = t(`plugin.pet.status.${petGlance.mood}`);
+    if (petGlance.meals <= 0) return `${label} — ${status}`;
+    return `${label} — ${status} · ${t('plugin.pet.meals', { count: petGlance.meals })}`;
+  }
+
   function requestPopover(item: RingItem, el: HTMLElement) {
     const anchor = anchorOf(el);
     const pet = savedPet();
@@ -904,6 +957,9 @@
     <span class="tool-dot" aria-hidden="true"></span>
   {:else if id === 'pet' && petSpeech.unread}
     <span class="tool-dot" aria-hidden="true"></span>
+  {:else if id === 'pet' && (petGlance?.mood === 'hungry' || petGlance?.mood === 'tired')}
+    <!-- A quiet nudge, not an alarm: the pet needs food or rest. -->
+    <span class="tool-dot need" aria-hidden="true"></span>
   {/if}
 {/snippet}
 
@@ -940,7 +996,7 @@
            same plugin is one click away in the expanded rail. -->
       <div class="idle-plugins" role="group" aria-label={t('island.pluginRail')}>
         {#each idlePlugins as plugin (plugin.id)}
-          <span class="tool idle-tool" role="img" aria-label={tDyn(plugin.label)} title={tDyn(plugin.label)}>
+          <span class="tool idle-tool" role="img" aria-label={tDyn(plugin.label)} title={pluginTooltip(plugin, false)}>
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d={plugin.icon}></path>
             </svg>
@@ -997,7 +1053,7 @@
           style={`--i:${i}`}
           aria-pressed={active}
           aria-label={tDyn(plugin.label)}
-          title={active ? `${tDyn(plugin.label)} — ${t('island.closePanel')}` : tDyn(plugin.label)}
+          title={pluginTooltip(plugin, active)}
           onclick={(e) => {
             e.stopPropagation();
             togglePlugin(plugin.id);
@@ -1601,6 +1657,29 @@
     box-shadow: 0 0 0 1.5px var(--bg);
   }
 
+  /* A hungry or sleepy pet: the same dot, breathing slowly. */
+  .tool-dot.need {
+    animation: need-pulse 2.4s ease-in-out infinite;
+  }
+
+  @keyframes need-pulse {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: scale(0.85);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.15);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tool-dot.need {
+      animation: none;
+    }
+  }
+
   .tool:hover {
     transform: translateY(-1px) scale(1.1);
     background: var(--surface-2);
@@ -1624,9 +1703,10 @@
   .island-panel {
     width: max-content;
     max-width: calc(100vw - 1.5rem);
-    /* The capsule sits near the top edge; keep the rest of the panel usable
-       when a plugin (the pet's assistant) grows taller than the monitor. */
-    max-height: calc(100vh - 4.75rem);
+    /* The capsule and tool rail occupy the top ~12rem including the island
+       margin. Reserving that much keeps the panel's own scrollbar inside the
+       window instead of letting its last rows fall off the screen. */
+    max-height: calc(100vh - 13rem);
     padding: 0.55rem 0.7rem;
     border-radius: calc(var(--r-pill) + 2px);
     overflow-y: auto;

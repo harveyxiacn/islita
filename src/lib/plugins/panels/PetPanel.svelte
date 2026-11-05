@@ -25,6 +25,7 @@
     advancePet,
     applyAction,
     createDefaultPet,
+    hasRiceFeast,
     parsePetState,
     petStatus,
     sanitizeName,
@@ -72,6 +73,7 @@
   import Mochi from '$lib/pet/Mochi.svelte';
   import PackSprite from '$lib/pet/PackSprite.svelte';
   import PetScene from '$lib/pet/PetScene.svelte';
+  import RiceFeast from '$lib/pet/RiceFeast.svelte';
   import ThemeGlyph from '$lib/pet/ThemeGlyph.svelte';
   import {
     moodPackMode,
@@ -99,6 +101,8 @@
     rest: 3200,
     pat: 1200,
   };
+  /** How long the DeepSeek rice cutscene stays on screen. */
+  const FEAST_MS = 6000;
 
   interface ChatMessage {
     id: number;
@@ -154,6 +158,9 @@
   let draftName = $state('');
   let busy = $state(false);
   let reacting = $state(false);
+  /** The rice cutscene is showing; the action itself is already applied. */
+  let feasting = $state(false);
+  let feastTimer: ReturnType<typeof setTimeout> | null = null;
   let cooldowns = $state<Record<PetAction, boolean>>({
     feed: false,
     play: false,
@@ -221,6 +228,10 @@
   const speechText = $derived(tDyn(sayKey(voice, situation), { name: pet.name }));
   const nextXp = $derived(xpForNextLevel(pet.level));
   const sprite = $derived(pet.sprite);
+  /** Bundled DeepSeek chibi art only; a sprite or pack keeps its own look. */
+  const feastable = $derived(hasRiceFeast(pet));
+  const showFeast = $derived(feasting && feastable);
+  const feastLabel = $derived(t('plugin.pet.rice.eating', { name: pet.name }));
   const bundledImage = $derived(
     sprite
       ? null
@@ -261,21 +272,28 @@
     }, 2200);
   }
 
-  function persistNow() {
+  function persistNow(action?: PetAction) {
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
     writePluginState(PET_PLUGIN_ID, copyState(pet));
-    // The detached window may be open; it adopts the panel's newer state.
-    void emitWindowEvent('pet', 'pet-state', { state: copyState(pet) });
+    // The detached window may be open; it adopts the panel's newer state and
+    // replays the same interaction (the rice cutscene included).
+    void emitWindowEvent('pet', 'pet-state', {
+      state: copyState(pet),
+      action: action ?? null,
+    });
   }
 
   /** Adopt a state another window (the detached pet) saved, if it is newer. */
   function adoptStoredState() {
     const stored = parsePetState(readPluginState<unknown>(PET_PLUGIN_ID, null), Date.now());
     if (stored.lastSeen <= pet.lastSeen) return;
+    const mealsBefore = pet.meals;
     pet = advancePet(stored, Date.now()).state;
+    // A feed in the desktop window plays the same cutscene here.
+    if (pet.meals > mealsBefore) startFeast();
     clearReaction();
   }
 
@@ -337,6 +355,25 @@
     }, ACTION_COOLDOWN_MS[action]);
   }
 
+  /** Restart the six-second DeepSeek rice cutscene, if this pet can show it. */
+  function startFeast() {
+    if (!hasRiceFeast(pet)) return;
+    feasting = true;
+    if (feastTimer) clearTimeout(feastTimer);
+    feastTimer = setTimeout(() => {
+      feastTimer = null;
+      feasting = false;
+    }, FEAST_MS);
+  }
+
+  function stopFeast() {
+    if (feastTimer) {
+      clearTimeout(feastTimer);
+      feastTimer = null;
+    }
+    feasting = false;
+  }
+
   function perform(action: PetAction) {
     if (cooldowns[action]) return;
     const now = Date.now();
@@ -347,7 +384,15 @@
     error = null;
     setCooldown(action);
     triggerReaction();
-    scheduleSave();
+    if (action === 'feed') {
+      // Feeding also runs in the detached window, so persist and announce it
+      // immediately instead of waiting for the drag coalescer.
+      startFeast();
+      persistNow('feed');
+      markSaved();
+    } else {
+      scheduleSave();
+    }
   }
 
   function startRename() {
@@ -370,6 +415,7 @@
     const now = Date.now();
     // Choosing a bundled skin deliberately leaves an imported pack.
     pet = { ...advancePet(pet, now).state, skin, name, packId: null, lastSeen: now };
+    stopFeast();
     clearReaction();
     error = null;
     packError = null;
@@ -389,6 +435,7 @@
     if (pet.deepseekForm === form) return;
     const now = Date.now();
     pet = { ...advancePet(pet, now).state, deepseekForm: form, lastSeen: now };
+    stopFeast();
     clearReaction();
     error = null;
     scheduleSave();
@@ -650,6 +697,7 @@
         ? sanitizeName(pack.name, pet.name)
         : pet.name;
     pet = { ...advanced, packId: pack?.id ?? null, name, lastSeen: now };
+    stopFeast();
     clearReaction();
     error = null;
     packError = null;
@@ -740,6 +788,7 @@
     if (!pet.sprite) return;
     const now = Date.now();
     pet = { ...advancePet(pet, now).state, sprite: null, lastSeen: now };
+    stopFeast();
     clearReaction();
     error = null;
     scheduleSave();
@@ -747,6 +796,7 @@
 
   function resetPet() {
     if (!window.confirm(t('plugin.pet.resetConfirm'))) return;
+    stopFeast();
     importToken += 1;
     busy = false;
     if (saveTimer) {
@@ -967,6 +1017,10 @@
         cancelAnimationFrame(reactionFrame);
         reactionFrame = null;
       }
+      if (feastTimer) {
+        clearTimeout(feastTimer);
+        feastTimer = null;
+      }
       for (const action of ACTIONS) {
         const timer = cooldownTimers[action.id];
         if (timer) clearTimeout(timer);
@@ -1035,6 +1089,10 @@
             level={pet.level}
           />
         </span>
+      {:else if showFeast}
+        <span class="feast-art">
+          <RiceFeast active label={feastLabel} />
+        </span>
       {:else if bundledImage}
         <img
           class="skin-card"
@@ -1088,6 +1146,20 @@
         </svg>
       </button>
       <span class="level-chip">{t('plugin.pet.level', { level: pet.level })}</span>
+      {#if pet.meals > 0}
+        <span
+          class="meals-chip"
+          role="img"
+          aria-label={t('plugin.pet.meals', { count: pet.meals })}
+          title={t('plugin.pet.meals.title')}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2.2 7.4h11.6c0 3.4-2.6 5.6-5.8 5.6S2.2 10.8 2.2 7.4Z" />
+            <path d="M5.3 5.8c0-1.2.9-1.5.9-2.5M8 5.8c0-1.2.9-1.5.9-2.5M10.7 5.8c0-1.2.9-1.5.9-2.5" />
+          </svg>
+          {pet.meals}
+        </span>
+      {/if}
     {/if}
   </div>
 
@@ -1714,6 +1786,15 @@
     height: 5.5rem;
   }
 
+  /* The cutout is square and transparent, so it floats over the scene instead
+     of sitting in a white sticker card like the static moods. */
+  .feast-art {
+    display: block;
+    width: 5.6rem;
+    height: 5.6rem;
+    margin-bottom: 0.1rem;
+  }
+
   .pack-art {
     display: flex;
     align-items: flex-end;
@@ -1837,6 +1918,31 @@
     font-size: 0.5938rem;
     line-height: 1.35;
     font-variant-numeric: tabular-nums;
+  }
+
+  .meals-chip {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.1875rem;
+    padding: 0.0625rem 0.375rem;
+    border: 1px solid color-mix(in srgb, var(--warn) 26%, var(--border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--warn) 9%, var(--surface-2));
+    color: var(--muted);
+    font-size: 0.5938rem;
+    line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meals-chip svg {
+    width: 0.625rem;
+    height: 0.625rem;
+    fill: none;
+    stroke: var(--warn);
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .rename {

@@ -4,8 +4,9 @@
 The artwork is provided by the project owner, who attests that these
 derivative character images are licensed for commercial use. The script never
 modifies v-pet/; it writes square, opaque WebP "sticker cards" that the pet
-panel rounds with CSS. Speech bubbles, watermarks and meme labels are painted
-out where they would otherwise dominate a 5.5rem pet portrait.
+panel rounds with CSS, plus one transparent cutout for the rice cutscene.
+Speech bubbles, watermarks and meme labels are painted out where they would
+otherwise dominate a 5.5rem pet portrait.
 
 Requires Pillow (pip install pillow). Run from the repository root:
     python -I scripts/prepare-pet-assets.py
@@ -64,6 +65,125 @@ def save(name: str, image: Image.Image) -> None:
     path = OUT / name
     image.convert("RGB").save(path, "WEBP", quality=90, method=6)
     print(f"{path.relative_to(ROOT)}  {path.stat().st_size} bytes")
+
+
+def save_rgba(name: str, image: Image.Image) -> None:
+    """WebP keeps the alpha channel; the rice cutscene floats over the panel."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = OUT / name
+    image.convert("RGBA").save(path, "WEBP", quality=90, method=6)
+    print(f"{path.relative_to(ROOT)}  {path.stat().st_size} bytes")
+
+
+def cutout(
+    source: str,
+    name: str,
+    *,
+    clears: tuple[tuple[int, int, int, int], ...] = (),
+    dark_clears: tuple[tuple[int, int, int, int], ...] = (),
+    tolerance: int = 26,
+    speck: int = 40,
+) -> None:
+    """Remove the flat card behind an already prepared 512 × 512 sticker.
+
+    A flood fill from the border only reaches the background connected to the
+    edge, so enclosed whites (apron, rice, highlights) stay. Near-white pixels
+    on the silhouette are made semi-transparent, which removes the halo that a
+    hard fill leaves on a dark panel. `clears`/`dark_clears` drop the supplied
+    card's calligraphy and annotation strokes; the latter only removes dark
+    pixels, preserving blue line art that crosses the same rectangle.
+    """
+    image = Image.open(OUT / source).convert("RGB")
+    width, height = image.size
+    work = image.copy()
+    sentinel = (255, 0, 255)
+
+    def near_white(pixel: tuple[int, int, int]) -> bool:
+        return max(255 - pixel[0], 255 - pixel[1], 255 - pixel[2]) <= tolerance // 2
+
+    # One connected background is normal; the grid also handles a card split
+    # into several white regions by a rule or a label.
+    seeds = [(x, y) for x in range(0, width, 8) for y in (0, height - 1)]
+    seeds += [(x, y) for y in range(0, height, 8) for x in (0, width - 1)]
+    for seed in seeds:
+        if work.getpixel(seed) != sentinel and near_white(image.getpixel(seed)):
+            ImageDraw.floodfill(work, seed, sentinel, thresh=tolerance)
+
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    work_pixels = work.load()
+    transparent = bytearray(width * height)
+    for y in range(height):
+        for x in range(width):
+            if work_pixels[x, y] == sentinel:
+                pixels[x, y] = (0, 0, 0, 0)
+                transparent[y * width + x] = 1
+
+    # Soften the white anti-aliased rim next to the removed background.
+    fringe = bytearray(width * height)
+    for y in range(height):
+        for x in range(width):
+            if transparent[y * width + x]:
+                continue
+            if any(
+                transparent[ny * width + nx]
+                for ny in range(max(0, y - 2), min(height, y + 3))
+                for nx in range(max(0, x - 2), min(width, x + 3))
+            ):
+                fringe[y * width + x] = 1
+
+    for y in range(height):
+        for x in range(width):
+            if not fringe[y * width + x]:
+                continue
+            r, g, b, a = pixels[x, y]
+            distance = max(255 - r, 255 - g, 255 - b)
+            if distance <= 16:
+                alpha = 0
+            elif distance < 64:
+                alpha = int(255 * (distance - 16) / 48)
+            else:
+                continue
+            if alpha < a:
+                pixels[x, y] = (r, g, b, alpha)
+
+    draw = ImageDraw.Draw(rgba)
+    for box in clears:
+        draw.rectangle(box, fill=(0, 0, 0, 0))
+    for box in dark_clears:
+        x0, y0, x1, y1 = box
+        for y in range(y0, min(y1, height)):
+            for x in range(x0, min(x1, width)):
+                r, g, b, a = pixels[x, y]
+                if max(r, g, b) < 140:
+                    pixels[x, y] = (0, 0, 0, 0)
+
+    # Drop isolated specks (dust from JPEG compression); the two sparkles are
+    # several hundred pixels each and survive.
+    alpha = rgba.getchannel("A")
+    alpha_pixels = alpha.load()
+    seen = bytearray(width * height)
+    for y in range(height):
+        for x in range(width):
+            if alpha_pixels[x, y] <= 8 or seen[y * width + x]:
+                continue
+            queue = [(x, y)]
+            seen[y * width + x] = 1
+            component: list[tuple[int, int]] = []
+            while queue:
+                cx, cy = queue.pop()
+                component.append((cx, cy))
+                for nx in range(max(0, cx - 1), min(width, cx + 2)):
+                    for ny in range(max(0, cy - 1), min(height, cy + 2)):
+                        if not seen[ny * width + nx] and alpha_pixels[nx, ny] > 8:
+                            seen[ny * width + nx] = 1
+                            queue.append((nx, ny))
+            if len(component) < speck:
+                for cx, cy in component:
+                    alpha_pixels[cx, cy] = 0
+
+    rgba.putalpha(alpha)
+    save_rgba(name, rgba)
 
 
 def quadrants(path: Path) -> list[Image.Image]:
@@ -138,6 +258,24 @@ def main() -> None:
     save(
         "deepseek-transformed-neutral.webp",
         square(trim(transformed_neutral), margin=0.05),
+    )
+
+    # The rice cutscene floats the same chibi over the panel scene, so the flat
+    # sticker card is removed. Coordinates are in the 512 × 512 feed card: they
+    # clear the supplied calligraphy and two blue annotation strokes while
+    # keeping the ahoge (x ≈ 256–303, y ≈ 53–82).
+    cutout(
+        "deepseek-chibi-feed.webp",
+        "deepseek-chibi-rice.webp",
+        clears=(
+            (0, 0, 400, 52),
+            (0, 0, 250, 95),
+            (303, 0, 512, 75),
+            (0, 60, 256, 75),
+            (380, 0, 512, 178),
+            (468, 380, 512, 512),
+        ),
+        dark_clears=((0, 0, 370, 82),),
     )
 
 

@@ -40,14 +40,17 @@
     advancePet,
     applyAction,
     createDefaultPet,
+    hasRiceFeast,
     parsePetState,
     petStatus,
     type PetAction,
     type PetState,
     type PetStatus,
   } from '$lib/pet/pet';
+  import DesktopFeast from '$lib/pet/DesktopFeast.svelte';
   import Mochi from '$lib/pet/Mochi.svelte';
   import PackSprite from '$lib/pet/PackSprite.svelte';
+  import RiceFeast from '$lib/pet/RiceFeast.svelte';
   import {
     packFramePath,
     packIdlePose,
@@ -89,6 +92,9 @@
     { id: 'pat', label: 'plugin.pet.pat', icon: 'M8 13S2.5 9.7 2.5 6.3A2.8 2.8 0 0 1 8 4.8a2.8 2.8 0 0 1 5.5 1.5C13.5 9.7 8 13 8 13Z' },
   ];
 
+  /** How long the rice bowl stays out; the island panel uses the same hold. */
+  const FEAST_MS = 6000;
+
   const NOTABLE = new Set<PetSituation>(['warn', 'critical', 'providerDown', 'paused']);
   const SPOKEN = new Set<PetSituation>([
     'warn', 'critical', 'reset', 'forecast', 'providerDown', 'paused', 'taskDone',
@@ -107,6 +113,7 @@
   let pressing = $state(false);
   let sleeping = $state(false);
   let pose = $state<'happy' | 'sleep' | null>(null);
+  let feasting = $state(false);
   let bubbleKey = $state<string | null>(null);
   let packs = $state<PetPack[]>([]);
   let packsLoaded = $state(false);
@@ -123,6 +130,7 @@
   const pendingMove = { dx: 0, dy: 0 };
 
   let poseTimer: ReturnType<typeof setTimeout> | null = null;
+  let feastTimer: ReturnType<typeof setTimeout> | null = null;
   let bubbleTimer: ReturnType<typeof setTimeout> | null = null;
   let hoverTimer: ReturnType<typeof setTimeout> | null = null;
   let sleepTimer: ReturnType<typeof setInterval> | null = null;
@@ -161,6 +169,9 @@
     mode === 'sleep' ? 'tired' : mode === 'happy' ? 'happy' : petStatus(pet)
   );
   const bubbleText = $derived(bubbleKey ? tDyn(bubbleKey, { name: pet.name }) : null);
+  const feastLabel = $derived(t('plugin.pet.rice.eating', { name: pet.name }));
+  /** The bundled DeepSeek chibi can be replaced by the rice cutscene. */
+  const feastable = $derived(hasRiceFeast(pet));
 
   function copyState(state: PetState): PetState {
     return { ...state, sprite: state.sprite ? { ...state.sprite } : null };
@@ -175,7 +186,11 @@
   function adopt(raw: unknown): boolean {
     const parsed = parsePetState(raw, Date.now());
     if (parsed.lastSeen <= pet.lastSeen) return false;
+    const mealsBefore = pet.meals;
     pet = advancePet(parsed, Date.now()).state;
+    savedAt = Date.now();
+    // A feed from the island panel shows the same bowl on the desktop.
+    if (pet.meals > mealsBefore) startFeast();
     return true;
   }
 
@@ -215,6 +230,24 @@
     }, holdMs);
   }
 
+  /** Show the bowl briefly; a second feed restarts the full hold. */
+  function startFeast(): void {
+    feasting = true;
+    if (feastTimer) clearTimeout(feastTimer);
+    feastTimer = setTimeout(() => {
+      feastTimer = null;
+      feasting = false;
+    }, FEAST_MS);
+  }
+
+  function stopFeast(): void {
+    if (feastTimer) {
+      clearTimeout(feastTimer);
+      feastTimer = null;
+    }
+    feasting = false;
+  }
+
   function setPose(next: 'happy' | 'sleep' | null, holdMs = 0): void {
     if (poseTimer) {
       clearTimeout(poseTimer);
@@ -244,6 +277,7 @@
     lastActiveAt = now;
     const advanced = advancePet(pet, now).state;
     pet = applyAction(advanced, action, now).state;
+    if (action === 'feed') startFeast();
     setPose(action === 'rest' ? 'sleep' : 'happy', action === 'rest' ? 1900 : 1200);
     speakSituation(action, 5200);
     checkSleep();
@@ -298,6 +332,8 @@
     pressing = false;
     menuOpen = false;
     hideBubble();
+    // The bowl is anchored to the floor; carried away it would look detached.
+    stopFeast();
     setPose(null);
     void petSetDragging(true);
   }
@@ -550,7 +586,13 @@
       adopt(payload.state);
       ensurePack(payload.state?.packId);
       if (payload.action && isPetAction(payload.action)) {
+        // An interaction in the island panel plays out here too, so the two
+        // windows show one pet rather than two independent copies.
         lastNotable = null;
+        lastActiveAt = Date.now();
+        setPose(payload.action === 'rest' ? 'sleep' : 'happy', payload.action === 'rest' ? 1900 : 1200);
+        speakSituation(payload.action, 5200);
+        checkSleep();
       }
     }).then((un) => (disposed ? un() : (unState = un)));
 
@@ -584,6 +626,7 @@
       window.removeEventListener('pointerup', onGlobalPointerUp);
       window.removeEventListener('keydown', onKeyDown);
       if (poseTimer) clearTimeout(poseTimer);
+      if (feastTimer) clearTimeout(feastTimer);
       if (bubbleTimer) clearTimeout(bubbleTimer);
       if (hoverTimer) clearTimeout(hoverTimer);
       if (greetTimer) clearTimeout(greetTimer);
@@ -659,6 +702,10 @@
 
   <div class="pet-aura" aria-hidden="true"></div>
   <div class="pet-shadow" aria-hidden="true"></div>
+  <!-- Bundled DeepSeek art brings its own bowl; every other skin gets one. -->
+  {#if !(feasting && feastable)}
+    <DesktopFeast active={feasting} label={feastLabel} />
+  {/if}
 
   <button
     class="pet-button"
@@ -675,8 +722,12 @@
       class="pet-wrap"
       style:transform={selectedPack ? 'none' : `scaleX(${facingDir})`}
     >
-      <span class="pet-figure mode-{mode}" class:falling={motion.falling}>
-        {#if pet.sprite}
+      <span class="pet-figure mode-{mode}" class:falling={motion.falling} class:chewing={feasting}>
+        {#if feasting && feastable}
+          <span class="rice-figure">
+            <RiceFeast active label={feastLabel} />
+          </span>
+        {:else if pet.sprite}
           {#if pet.sprite.frames === 4}
             <span
               class="sprite-strip"
@@ -868,6 +919,22 @@
     animation: pet-dangle 1.9s ease-in-out infinite;
   }
 
+  /* Overrides the idle/walk bob for the six seconds of the rice bowl. */
+  .pet-figure.chewing {
+    animation: pet-chew 0.62s ease-in-out infinite;
+  }
+
+  /* The rice cutout replaces the full-body art for the cutscene; the square
+     keeps the steam/grain percentages aligned with the artwork. */
+  .rice-figure {
+    display: block;
+    width: 12.4rem;
+    max-width: 96%;
+    aspect-ratio: 1;
+    margin-bottom: 0.1rem;
+    pointer-events: none;
+  }
+
   .sprite {
     display: block;
     max-width: 100%;
@@ -971,6 +1038,22 @@
     }
     50% {
       transform: rotate(-2deg);
+    }
+  }
+
+  @keyframes pet-chew {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    25% {
+      transform: translateY(1px) scale(1.012, 0.988);
+    }
+    50% {
+      transform: translateY(0) scale(0.994, 1.006);
+    }
+    75% {
+      transform: translateY(1px) scale(1.008, 0.992);
     }
   }
 
@@ -1088,6 +1171,7 @@
     .pet-figure.mode-sleep,
     .pet-figure.mode-happy,
     .pet-figure.mode-drag,
+    .pet-figure.chewing,
     .sprite-strip,
     .menu {
       animation: none;

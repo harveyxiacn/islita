@@ -54,12 +54,38 @@ test('the detached pet renders the saved skin, walks and reacts to a pat', async
   await menu.getByRole('menuitem', { name: 'Feed', exact: true }).click();
   await expect(menu).toBeHidden();
   await expect(page.locator('.bubble')).toHaveText('Rice! One more bowl!');
+  // The bundled DeepSeek chibi becomes the rice cutscene, bowl included.
+  const feast = page.getByTestId('rice-feast');
+  await expect(feast).toBeVisible();
+  await expect(feast.locator('img.rice-fish')).toHaveAttribute(
+    'src',
+    /\/pet\/deepseek-chibi-rice\.webp$/
+  );
+  await expect(page.locator('.pet-figure')).toHaveClass(/chewing/);
+  await expect(page.getByTestId('desktop-feast')).toHaveCount(0);
 
   const stored = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('island.plugin.pet') ?? '{}')
   );
   expect(stored.fullness).toBeGreaterThan(70);
   expect(stored.name).toBe('Fishy');
+  expect(stored.meals).toBe(1);
+});
+
+test('a non-DeepSeek pet gets the standalone rice bowl instead', async ({ page }) => {
+  await seed(page, { skin: 'hachiware', form: 'chibi', name: 'Chiikawa' });
+  await page.goto(PET_URL);
+
+  const petButton = page.getByRole('button', { name: 'Pet: Chiikawa' });
+  await expect(petButton).toBeVisible();
+  await petButton.click({ button: 'right' });
+  await page
+    .getByRole('menu', { name: 'Pet menu' })
+    .getByRole('menuitem', { name: 'Feed', exact: true })
+    .click();
+
+  await expect(page.getByTestId('desktop-feast')).toHaveClass(/active/);
+  await expect(page.getByTestId('rice-feast')).toHaveCount(0);
 });
 
 test('the context menu toggles wandering and hides the pet from the desktop', async ({ page }) => {

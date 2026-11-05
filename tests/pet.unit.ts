@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import {
   DEEPSEEK_FORMS,
+  MEALS_MAX,
   OFFLINE_DECAY_CAP_MS,
   PET_DEFAULT_DEEPSEEK_FORM,
   PET_SKINS,
@@ -10,6 +11,7 @@ import {
   applyAction,
   createDefaultPet,
   grantXp,
+  hasRiceFeast,
   isDeepSeekForm,
   isPetSkin,
   parsePetState,
@@ -42,6 +44,7 @@ test('a fresh pet starts happy, named Mochi, with a clean level', () => {
     deepseekForm: 'chibi',
     theme: 'auto',
     packId: null,
+    meals: 0,
     lastSeen: 1_000,
   });
   expect(pet.sprite).toBeNull();
@@ -129,12 +132,46 @@ test('actions clamp needs and grant XP', () => {
   expect(result.state.mood).toBe(100);
   expect(result.state.energy).toBe(19);
   expect(result.state.xp).toBe(8);
+  expect(result.state.meals).toBe(1);
   expect(result.state.lastSeen).toBe(500);
 
   const play = applyAction({ ...pet, energy: 3 }, 'play', 0);
   expect(play.state.energy).toBe(0);
   expect(play.state.mood).toBe(100);
   expect(play.state.fullness).toBe(91);
+  expect(play.state.meals).toBe(0);
+});
+
+test('meals count feeds only and are repaired on load', () => {
+  expect(createDefaultPet(0).meals).toBe(0);
+  const fed = applyAction(createDefaultPet(0), 'feed', 1).state;
+  expect(fed.meals).toBe(1);
+  expect(applyAction(fed, 'play', 2).state.meals).toBe(1);
+  expect(applyAction(fed, 'pat', 2).state.meals).toBe(1);
+
+  expect(parsePetState({ meals: -3 }, 0).meals).toBe(0);
+  expect(parsePetState({ meals: 12.9 }, 0).meals).toBe(12);
+  expect(parsePetState({ meals: MEALS_MAX + 1 }, 0).meals).toBe(MEALS_MAX);
+  expect(parsePetState({ meals: 'many' }, 0).meals).toBe(0);
+});
+
+test('the rice cutscene belongs to the bundled DeepSeek chibi only', () => {
+  const pet = createDefaultPet(0, 'deepseek');
+  expect(hasRiceFeast(pet)).toBe(true);
+  expect(hasRiceFeast({ ...pet, deepseekForm: 'transformed' })).toBe(false);
+  expect(hasRiceFeast({ ...pet, skin: 'hachiware' })).toBe(false);
+  expect(hasRiceFeast({ ...pet, skin: 'mochi' })).toBe(false);
+
+  const sprite = parseStoredSprite({
+    dataUrl: PNG,
+    width: 16,
+    height: 16,
+    frames: 1,
+    fileName: 'own.png',
+  });
+  if (!sprite) throw new Error('sprite fixture did not parse');
+  expect(hasRiceFeast({ ...pet, sprite })).toBe(false);
+  expect(hasRiceFeast({ ...pet, packId: 'kitty' })).toBe(false);
 });
 
 test('level thresholds carry XP through multiple levels', () => {

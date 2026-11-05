@@ -15,10 +15,13 @@ It provides:
   supplied by the project owner: **DeepSeek 大肥鱼** (switchable Q版 chibi and
   变身 transformed forms) and **Hachiware**;
 - fullness, mood and energy needs that decay with elapsed time;
-- feed, play, rest and pat interactions, XP, levels and a short reaction line;
+- feed, play, rest and pat interactions, XP, levels, a short reaction line and a
+  lifetime bowls-eaten count;
+- a DeepSeek 大肥鱼 rice-eating cutscene (transparent cutout + CSS steam, grain
+  and sparkle motion) shared by the panel and the detached window;
 - original character-voice lines driven by quota, provider and pet needs, shown
-  in the panel and beside a ring's quota popover, plus an unread dot on the
-  pet's island rail icon;
+  in the panel and beside a ring's quota popover, plus an unread dot and a
+  hungry/sleepy need dot on the pet's island rail icon;
 - a one-image import path for the user's own PNG/WebP/GIF sprite, which takes
   precedence over the selected skin;
 - debounced persistence in the plugin's localStorage entry (`island.plugin.pet`).
@@ -41,6 +44,7 @@ state)`:
   "fullness": 82,        // 0–100
   "mood": 76,            // 0–100
   "energy": 70,          // 0–100
+  "meals": 0,            // lifetime feeds, never decays
   "skin": "mochi",       // mochi | deepseek | hachiware
   "deepseekForm": "chibi", // chibi | transformed (DeepSeek only)
   "lastSeen": 1760000000000,
@@ -74,6 +78,14 @@ Expression is derived, not stored. Priority: `hungry` (fullness < 30), `tired`
 60), otherwise `ok`. The same status drives the built-in face and the localized
 `plugin.pet.status.*` chip.
 
+`meals` is a keepsake rather than a resource: only `feed` increments it, it
+never decays, and it is capped at 1,000,000 so a corrupt import cannot overflow.
+The island rail shows the count in the pet tool's tooltip and raises a slow
+`--warn` dot when the derived status is `hungry` or `tired`; an unread speech
+event keeps the brighter dot. Because the pet writes localStorage outside
+Svelte, the sidebar listens for the plugin's `island-plugin-state` event and
+the cross-window `storage` event and re-reads the pet.
+
 XP per level is `80 + (level - 1) × 40`. Feed 8, play 12, rest 6, pat 4 XP;
 excess XP carries through multiple level-ups. Every action has a 1.2–3.2 second
 UI cooldown, and its button is disabled during it.
@@ -104,6 +116,29 @@ status, and each `task-completed` event. A new event raises the dot on the pet
 icon in the island rail; `PetPanel.svelte` calls `seen()` while it is mounted,
 clearing it. The pet panel may show a newer island-wide event while a ring's
 popover speaks about that provider, but both use the same voice and line table.
+
+## Rice feast
+
+Feeding the bundled DeepSeek chibi plays a six-second cutscene. The artwork is
+`static/pet/deepseek-chibi-rice.webp`: the supplied feed card with its flat
+background flood-filled away, a softened anti-aliased rim, a few compression
+specks removed and the card's leftover calligraphy masked. `RiceFeast.svelte`
+keeps the whole card, then adds CSS-only steam, eight grains arcing from the
+bowl to the mouth, a warm glow and sparkles; the figure itself has a short
+munch loop. There is no video, canvas or runtime model call, so the cutscene is
+sharp at every scale and stops under `prefers-reduced-motion`.
+
+The cutscene is deliberately limited to the bundled chibi. A transformed
+DeepSeek, another skin, a custom sprite or a DyberPet pack keeps its own art
+(the helper is `hasRiceFeast`); a non-DeepSeek pet gets `DesktopFeast.svelte`, a
+small bowl with steam and grains at its feet.
+
+Both surfaces replay the same moment. Feeding in the island panel persists
+immediately and emits `pet-state {state, action: 'feed'}`; the detached window
+adopts the newer state, notices `meals` increased, and shows the cutscene (or
+plays the action it received). Feeding in the detached window is adopted by a
+mounted panel the same way. The panel also shows a `meals-chip` with the
+lifetime bowl count beside the level chip.
 
 ## Sprite format for user images
 
@@ -144,7 +179,8 @@ This step happens outside Islita. The app does not call an image model.
 The project owner supplied the derivative character artwork in `v-pet/` and
 attests that it is authorised for commercial use. `scripts/prepare-pet-assets.py`
 crops and trims those source images into the opaque, square WebP cards in
-`static/pet/`; it writes only `static/pet/` and never modifies `v-pet/`. Keep
+`static/pet/`, and cuts the transparent rice card from the prepared DeepSeek
+feed card; it writes only `static/pet/` and never modifies `v-pet/`. Keep
 that provenance when adding or replacing a bundled skin, and do not introduce
 artwork whose rights are unknown.
 
@@ -280,14 +316,17 @@ not exposed by Tauri).
 
 - `pnpm test` (Playwright unit config): `tests/pet.unit.ts` covers decay, the
   offline cap, clamps, XP/level thresholds, status priority, corrupt-state
-  repair, frame classification and import rejection; `tests/pet-desktop.unit.ts`
-  checks the sprite mapping against the files on disk, the Rust window constants,
-  position parsing, actions, sleep and facing.
-- `tests/pet.e2e.ts` opens the island panel, checks the default mascot/stats and
-  verifies that feeding updates the reaction line.
+  repair, the meals counter, rice-feast eligibility, frame classification and
+  import rejection; `tests/pet-desktop.unit.ts` checks the sprite mapping
+  against the files on disk, the Rust window constants, position parsing,
+  actions, sleep and facing.
+- `tests/pet.e2e.ts` opens the island panel, checks the default mascot/stats,
+  verifies that feeding shows the rice cutscene and increments the meals chip,
+  and seeds a hungry pet to check the rail's need dot and tooltip.
 - `tests/pet-desktop.e2e.ts` opens `/pet` in the browser preview, renders the
   saved DeepSeek/Hachiware/Mochi/custom sprite, pats, feeds from the context
-  menu, verifies the persisted fullness, and toggles Wander.
+  menu (cutscene for DeepSeek, standalone bowl for other skins), verifies the
+  persisted fullness and meals, and toggles Wander.
 - `cargo test --locked` covers the window clamp and random-range helpers;
   `cargo clippy --locked --all-targets -- -D warnings`, `pnpm check`,
   `pnpm check:i18n` and `pnpm check:agents` are part of the release gate.
