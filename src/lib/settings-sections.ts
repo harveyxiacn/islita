@@ -10,6 +10,7 @@ export const SECTIONS = [
   { id: 'sizeColour', title: 'settings.sizeColour' },
   { id: 'position', title: 'settings.position' },
   { id: 'behaviour', title: 'settings.behaviour' },
+  { id: 'plugins', title: 'settings.plugins' },
   { id: 'notifications', title: 'settings.card.notifications' },
   { id: 'shortcuts', title: 'settings.card.shortcuts' },
   { id: 'providers', title: 'settings.providers' },

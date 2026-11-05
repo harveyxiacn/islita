@@ -3,8 +3,9 @@ import { test, expect } from '@playwright/test';
 // Deliberately no pointer, keyboard, dispatchEvent, or element.click calls.
 // These checks load the real settings route and observe what it renders.
 const SECTION_IDS = [
-  'appearance', 'presets', 'sidebarItems', 'sizeColour', 'position', 'behaviour', 'notifications',
-  'shortcuts', 'providers', 'accounts', 'data', 'integrations', 'updates', 'privacy', 'backup', 'about',
+  'appearance', 'presets', 'sidebarItems', 'sizeColour', 'position', 'behaviour', 'plugins',
+  'notifications', 'shortcuts', 'providers', 'accounts', 'data', 'integrations', 'updates',
+  'privacy', 'backup', 'about',
 ];
 
 for (const language of ['en', 'zh-CN']) {
@@ -20,8 +21,8 @@ for (const language of ['en', 'zh-CN']) {
     await expect(page.getByRole('searchbox')).toBeVisible();
     // a card with something to reset starts with its button disabled
     await expect(page.locator('article#position button.reset')).toBeDisabled();
-    // the privacy card lists every request the app can make
-    await expect(page.locator('article#privacy li')).toHaveCount(12);
+    // the privacy card lists every local read and request the app can make
+    await expect(page.locator('article#privacy li')).toHaveCount(14);
     expect(errors).toEqual([]);
     await page.screenshot({ path: `test-results/settings-${language}.png`, fullPage: true });
   });

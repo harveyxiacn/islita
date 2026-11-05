@@ -175,7 +175,7 @@ The file may be partial: missing keys take their defaults, unknown or invalid
 values are ignored and numbers are clamped. Write only what the user asked for.
 Nested objects (`providers`, `sidebarItems`, `islandIdle`, `thresholds`,
 `colors`, `sizes`, `webhook`, `subscriptionUsd`) are merged member by member;
-`accounts` and `customPresets` are replaced as a whole.
+`accounts`, `disabledPlugins` and `customPresets` are replaced as a whole.
 
 Safety net: before each change the previous version is kept in
 `settings.history.json` next to `settings.json` (newest first, 5 versions;
@@ -215,6 +215,7 @@ below list every key exactly once; `pnpm check:agents`
 | `island` | `false`, `true` | float as a rounded capsule at the top centre of the monitor instead of docking flush with `edge`; the island grows downwards for plugin panels and is not draggable |
 | `islandMargin` | `12` (0 – 64) | gap in px between the island and the top of the monitor's work area (also the side gap when it is very wide) |
 | `islandIdle` | `{"providers":[],"plugins":[]}` | what the collapsed island draws: up to 6 quota keys (`claude`, `claude@work`, …) as rings and up to 6 plugin ids (`calendar`, `mail`, …) as icons. Empty `providers` = the busiest provider and a count. Invalid ids are dropped, duplicates removed |
+| `disabledPlugins` | `[]` | island plugin ids switched off in Settings → Plugins; they disappear from the rail and idle capsule, an open panel closes, and their background badges stop. A missing id is enabled, so a new plugin appears automatically. Local data and settings are kept; the array is replaced as a whole and sanitised like `islandIdle` (at most 64) |
 | `islandAutoHide` | `false`, `true` | hide the idle island as a thin handle on the top edge; pointing at it reveals the capsule, resting on it for a moment expands the board, and it hides again after `autoHideDelayMs` |
 | `petOnDesktop` | `false`, `true` | show the pet as its own transparent, always-on-top window that can be dragged anywhere on the desktop. Opt-in; the window is created at startup and stays hidden while this is off. Also in the pet panel |
 | `petRoam` | `true`, `false` | let the desktop pet wander along the current monitor's work-area floor (idle pauses, turns, small falls). Only read while `petOnDesktop` is on; stays off while the pointer is on the pet, a menu is open or the pet sleeps |

@@ -46,6 +46,8 @@ export const defaultSettings: Settings = {
   islandMargin: 12,
   /** collapsed island content; empty providers = busiest summary */
   islandIdle: { providers: [], plugins: [] },
+  /** island plugins switched off; empty = every registered plugin is shown */
+  disabledPlugins: [],
   islandAutoHide: false,
   /** detached desktop companion; opt-in because it is always visible */
   petOnDesktop: false,

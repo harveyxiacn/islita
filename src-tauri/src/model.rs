@@ -616,6 +616,10 @@ pub struct Settings {
     /// list = the busiest provider summary.
     #[serde(default)]
     pub island_idle: IslandIdleSettings,
+    /// Island plugin ids switched off in Settings → Plugins. A missing id is
+    /// enabled, so a plugin added in a later release appears automatically.
+    #[serde(default)]
+    pub disabled_plugins: Vec<String>,
     /// Collapse the idle island to a thin handle on the top edge; the handle
     /// reveals the capsule on hover and only expands after the pointer rests.
     #[serde(default)]
@@ -780,6 +784,7 @@ impl Default for Settings {
             island: false,
             island_margin: 12,
             island_idle: IslandIdleSettings::default(),
+            disabled_plugins: Vec::new(),
             island_auto_hide: false,
             pet_on_desktop: false,
             pet_roam: true,

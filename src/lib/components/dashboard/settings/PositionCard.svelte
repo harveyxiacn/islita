@@ -7,6 +7,7 @@
   import ProviderLogo from '$lib/components/ProviderLogo.svelte';
   import { getMonitors } from '$lib/api';
   import { t, tDyn } from '$lib/i18n/i18n.svelte';
+  import { enabledPlugins } from '$lib/plugins/enabled';
   import { ISLAND_PLUGINS } from '$lib/plugins/registry';
   import { settings } from '$lib/stores/settings.svelte';
   import { rings } from '$lib/stores/rings.svelte';
@@ -66,14 +67,24 @@
     }
   }
 
+  /**
+   * Only switched-on modules can be picked for the idle capsule. A selection
+   * that points at a disabled plugin stays saved (so it returns when the
+   * module is switched back on) but does not consume one of the six slots.
+   */
+  const idlePluginOptions = $derived(enabledPlugins(ISLAND_PLUGINS, s.disabledPlugins));
+  const idlePluginIds = $derived(new Set(idlePluginOptions.map((plugin) => plugin.id)));
+  const visibleIdlePlugins = $derived(
+    s.islandIdle.plugins.filter((id) => idlePluginIds.has(id))
+  );
+
   function toggleIdlePlugin(id: string) {
-    const current = s.islandIdle.plugins;
+    const current = visibleIdlePlugins;
+    if (!current.includes(id) && current.length >= 6) return;
     const plugins = current.includes(id)
       ? current.filter((value) => value !== id)
-      : [...current, id].slice(0, 6);
-    if (current.includes(id) || current.length < 6) {
-      void settings.patch({ islandIdle: { plugins } });
-    }
+      : [...current, id];
+    void settings.patch({ islandIdle: { plugins } });
   }
 </script>
 
@@ -134,24 +145,28 @@
     </Field>
 
     <Field label={t('settings.islandIdlePlugins')} hint={t('settings.islandIdlePlugins.hint')} wide>
-      <div class="picks" role="group" aria-label={t('settings.islandIdlePlugins')}>
-        {#each ISLAND_PLUGINS as plugin (plugin.id)}
-          {@const picked = s.islandIdle.plugins.includes(plugin.id)}
-          <button
-            type="button"
-            class="pick"
-            class:on={picked}
-            aria-pressed={picked}
-            disabled={!picked && s.islandIdle.plugins.length >= 6}
-            onclick={() => toggleIdlePlugin(plugin.id)}
-          >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d={plugin.icon}></path>
-            </svg>
-            <span>{tDyn(plugin.label)}</span>
-          </button>
-        {/each}
-      </div>
+      {#if idlePluginOptions.length > 0}
+        <div class="picks" role="group" aria-label={t('settings.islandIdlePlugins')}>
+          {#each idlePluginOptions as plugin (plugin.id)}
+            {@const picked = s.islandIdle.plugins.includes(plugin.id)}
+            <button
+              type="button"
+              class="pick"
+              class:on={picked}
+              aria-pressed={picked}
+              disabled={!picked && visibleIdlePlugins.length >= 6}
+              onclick={() => toggleIdlePlugin(plugin.id)}
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d={plugin.icon}></path>
+              </svg>
+              <span>{tDyn(plugin.label)}</span>
+            </button>
+          {/each}
+        </div>
+      {:else}
+        <p class="note">{t('settings.islandIdlePlugins.none')}</p>
+      {/if}
     </Field>
   {/if}
 

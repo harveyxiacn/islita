@@ -108,6 +108,14 @@ know. Idle plugin icons are not buttons — the pointer enters the stage and
 expands the island before a click could land — but their mail, calendar and pet
 badges are still drawn. The expanded rail uses the same registry and order.
 
+Settings → Plugins (`disabledPlugins`) switches a module off: it disappears from
+the rail and the idle icons, an open panel closes, and the mail/calendar
+background badges stop scanning. A plugin that is not named in the list is on,
+so a module added in a later release appears without a settings migration. The
+switch is presentation-only: local plugin data, settings and any independent
+feature (such as `petOnDesktop`) are kept and return when it is switched back
+on.
+
 Pointer enter or keyboard focus morphs it into the **expanded board**: a
 provider row (wrapping when `ringMode` produces many rings) above a 5-column
 plugin rail (three rows with the twelve built-in plugins; more wrap). Leaving
@@ -153,7 +161,10 @@ interface IslandPlugin {
 A panel is an ordinary Svelte component. It receives `close()` but may ignore
 it. Registration is one entry in `src/lib/plugins/registry.ts`; the shell reads
 `ISLAND_PLUGINS` (that list sorted by `order`) and nothing else. The rail and
-the idle `islandIdle.plugins` icons both come from this registry. A panel owns
+the idle `islandIdle.plugins` icons both come from this registry, filtered by
+`enabledPlugins()` in `src/lib/plugins/enabled.ts` against `disabledPlugins`.
+The settings card is generated from the same registry, so a new plugin gets a
+switch without a second list. A panel owns
 its state through `src/lib/plugins/storage.ts` (`localStorage`, namespaced,
 every access guarded, so a storage failure never takes down the island) and
 talks to the backend only through explicit commands in `src/lib/api.ts`; it
@@ -457,9 +468,9 @@ new window, a new process or a new protocol, that is a platform feature first
 
 ## 6. Contract summary
 
-* Settings: `island`, `islandMargin`, `islandIdle`, `islandAutoHide`,
-  `sidebarItems.settingsButton` / `moreButton`, `taskNotifications` (see
-  AGENTS.md §5).
+* Settings: `island`, `islandMargin`, `islandIdle`, `disabledPlugins`,
+  `islandAutoHide`, `sidebarItems.settingsButton` / `moreButton`,
+  `taskNotifications` (see AGENTS.md §5).
 * Backend: `list_task_completions` + `task-completed` event; detection in the
   session parser/ingestion path, delivery through the existing alert gate.
   `read_wechat_sessions` (Windows UI Automation, read-only) backs the WeChat

@@ -219,6 +219,34 @@ test('the idle island shows the chosen providers and plugin icons', async ({ pag
   expect(rowTops[2]).toBeGreaterThan(rowTops[1]);
 });
 
+test('a plugin switched off in Settings disappears from the rail and idle capsule', async ({
+  page,
+}) => {
+  const settings = encodeURIComponent(
+    JSON.stringify({
+      island: true,
+      islandIdle: { providers: ['claude'], plugins: ['mail', 'calendar'] },
+      disabledPlugins: ['mail'],
+    })
+  );
+  await page.goto(`/?settings=${settings}`);
+  await expect(page.locator('.stage')).toHaveAttribute('data-island', 'true');
+  await expect(page.locator('.pill.island')).toHaveClass(/island-idle/);
+
+  // The saved idle selection for Mail is kept, but a switched-off module is
+  // not drawn; Calendar is unaffected.
+  await expect(page.locator('.idle-layer .idle-tool')).toHaveCount(1);
+  await expect(page.locator('.idle-layer .idle-tool[aria-label="Mail"]')).toHaveCount(0);
+  await expect(page.locator('.idle-layer .idle-tool[aria-label="Calendar"]')).toHaveCount(1);
+
+  await page.locator('.stage').hover();
+  await expect(page.locator('.pill.island')).toHaveClass(/island-open/);
+  await expect(page.locator('.island-tools .tool')).toHaveCount(11);
+  const rail = page.locator('.island-tools');
+  await expect(rail.getByRole('button', { name: 'Mail', exact: true })).toHaveCount(0);
+  await expect(rail.getByRole('button', { name: 'Calendar', exact: true })).toHaveCount(1);
+});
+
 test('rapid hover in and out settles on the idle island without drifting', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 520 });
   await openIsland(page);

@@ -13,6 +13,7 @@ export type CardId =
   | 'sizeColour'
   | 'position'
   | 'behaviour'
+  | 'plugins'
   | 'notifications'
   | 'privacy'
   | 'shortcuts'
@@ -34,6 +35,7 @@ export const CARD_KEYS: Record<CardId, readonly Key[]> = {
   sizeColour: ['colors', 'sizes'],
   position: ['edge', 'verticalAlign', 'verticalOffset', 'monitor', 'island', 'islandMargin', 'islandAutoHide', 'islandIdle', 'petOnDesktop', 'petRoam', 'alwaysOnTop'],
   behaviour: ['autoHide', 'autoHideDelayMs', 'popoverTimeoutSec', 'collapsedWidth', 'refreshIntervalSec', 'adaptiveRefresh', 'autostart', 'trayDisplay'],
+  plugins: ['disabledPlugins'],
   notifications: ['notifications', 'forecastNotifications', 'thresholdNotifications', 'taskNotifications', 'budgetNotifications', 'weeklySummary', 'webhook', 'thresholds', 'focusUntil', 'focusHidesSidebar'],
   privacy: ['hideAccountEmail'],
   shortcuts: ['shortcutToggleSidebar', 'shortcutOpenDashboard'],

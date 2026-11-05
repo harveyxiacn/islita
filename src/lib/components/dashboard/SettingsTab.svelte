@@ -18,6 +18,7 @@
   import DataCard from './settings/DataCard.svelte';
   import IntegrationsPanel from './settings/IntegrationsPanel.svelte';
   import NotificationsCard from './settings/NotificationsCard.svelte';
+  import PluginsCard from './settings/PluginsCard.svelte';
   import PositionCard from './settings/PositionCard.svelte';
   import PresetsCard from './settings/PresetsCard.svelte';
   import PrivacyCard from './settings/PrivacyCard.svelte';
@@ -150,6 +151,7 @@
     <SizeColourCard />
     <PositionCard />
     <BehaviourCard />
+    <PluginsCard />
     <NotificationsCard />
     <ShortcutsCard />
     <ProvidersCard />

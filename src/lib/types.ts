@@ -275,6 +275,11 @@ export interface Settings {
   islandMargin: number;
   /** Providers and plugins shown by the collapsed island. */
   islandIdle: IslandIdleSettings;
+  /**
+   * Island plugin ids the user switched off. Missing = enabled, so a plugin
+   * added in a later release appears without a settings migration.
+   */
+  disabledPlugins: string[];
   /** Hide the idle island as a thin handle on the top edge; hover to reveal. */
   islandAutoHide: boolean;
   /** Show the pet as a detached, draggable window on the desktop. */

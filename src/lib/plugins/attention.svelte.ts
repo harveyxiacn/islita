@@ -22,11 +22,35 @@ class Attention {
   #timer: ReturnType<typeof setInterval> | null = null;
   #started = 0;
   #mailGeneration = 0;
+  /** A switched-off module neither scans nor shows a badge. */
+  #mailEnabled = true;
+  #calendarEnabled = true;
   #onState = (event: Event) => {
     const plugin = (event as CustomEvent<string>).detail;
     if (plugin === 'mail.folder') void this.#refreshMail();
     else if (plugin === 'calendar') this.#refreshCalendar();
   };
+
+  /**
+   * Follow Settings → Plugins. Switching a module off clears its badge and
+   * stops its work; switching it back on refreshes immediately when the
+   * island is running.
+   */
+  configure(mail: boolean, calendar: boolean): void {
+    if (mail === this.#mailEnabled && calendar === this.#calendarEnabled) return;
+    const mailWas = this.#mailEnabled;
+    const calendarWas = this.#calendarEnabled;
+    this.#mailEnabled = mail;
+    this.#calendarEnabled = calendar;
+    if (!mail) {
+      this.#mailGeneration += 1; // an in-flight scan may not restore the badge
+      this.mailUnread = 0;
+    }
+    if (!calendar) this.calendarSoon = false;
+    if (this.#started > 0 && ((mail && !mailWas) || (calendar && !calendarWas))) {
+      void this.refresh();
+    }
+  }
 
   start(): void {
     this.#started += 1;
@@ -45,10 +69,17 @@ class Attention {
   }
 
   async refresh(): Promise<void> {
-    await Promise.all([this.#refreshMail(), this.#refreshCalendar()]);
+    const jobs: Promise<void>[] = [];
+    if (this.#mailEnabled) jobs.push(this.#refreshMail());
+    if (this.#calendarEnabled) this.#refreshCalendar();
+    await Promise.all(jobs);
   }
 
   async #refreshMail(): Promise<void> {
+    if (!this.#mailEnabled) {
+      this.mailUnread = 0;
+      return;
+    }
     const generation = ++this.#mailGeneration;
     const folder = readPluginState<string | null>('mail.folder', null);
     if (typeof folder !== 'string' || !folder.trim()) {
@@ -67,6 +98,10 @@ class Attention {
   }
 
   #refreshCalendar(): void {
+    if (!this.#calendarEnabled) {
+      this.calendarSoon = false;
+      return;
+    }
     const cached = readPluginState<CalendarCache | null>('calendar', null);
     if (!cached || !Array.isArray(cached.events)) {
       this.calendarSoon = false;

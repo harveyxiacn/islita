@@ -220,6 +220,9 @@ pub fn clamp(mut s: Settings) -> Settings {
     s.island_margin = s.island_margin.min(64);
     s.island_idle.providers = sanitize_island_ids(std::mem::take(&mut s.island_idle.providers), 6);
     s.island_idle.plugins = sanitize_island_ids(std::mem::take(&mut s.island_idle.plugins), 6);
+    // An opt-out list: unknown plugin ids are harmless to the shell, but the
+    // same shape check keeps a typo from turning into an arbitrary string.
+    s.disabled_plugins = sanitize_island_ids(std::mem::take(&mut s.disabled_plugins), 64);
     s.auto_hide_delay_ms = s.auto_hide_delay_ms.min(600_000);
     s.popover_timeout_sec = s.popover_timeout_sec.min(600);
     // 0 = off, -1 = until turned off, otherwise an epoch-ms deadline.
@@ -865,6 +868,40 @@ mod tests {
         });
         assert_eq!(idles.island_idle.providers.len(), 6);
         assert_eq!(idles.island_idle.providers[0], "p0");
+    }
+
+    #[test]
+    fn disabled_plugins_are_an_opt_out_list_with_sanitised_ids() {
+        let base = Settings::default();
+        assert!(
+            base.disabled_plugins.is_empty(),
+            "a plugin is enabled unless it is named"
+        );
+        let merged = merge(
+            &base,
+            &json!({"disabledPlugins": ["pet", "pet", "bad id", "!!!", "mail"]}),
+        );
+        assert_eq!(merged.disabled_plugins, ["pet", "mail"]);
+        assert!(
+            merged.providers["claude"].enabled,
+            "switching a plugin off touches no provider"
+        );
+
+        // Patching the list replaces it as a whole, like `accounts`.
+        let merged = merge(&merged, &json!({"disabledPlugins": ["drop"]}));
+        assert_eq!(merged.disabled_plugins, ["drop"]);
+        assert_eq!(
+            merge(&merged, &json!({"disabledPlugins": []})).disabled_plugins,
+            Vec::<String>::new()
+        );
+
+        let many = (0..70).map(|i| format!("p{i}")).collect::<Vec<_>>();
+        let clamped = clamp(Settings {
+            disabled_plugins: many,
+            ..base
+        });
+        assert_eq!(clamped.disabled_plugins.len(), 64);
+        assert_eq!(clamped.disabled_plugins[0], "p0");
     }
 
     #[test]

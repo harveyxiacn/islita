@@ -62,6 +62,7 @@
   import { petVoice, quotaSituation, sayKey, speechAvatar, type PetVoice } from '$lib/pet/speech';
   import { petSpeech } from '$lib/pet/speech.svelte';
   import { attention } from '$lib/plugins/attention.svelte';
+  import { enabledPlugins } from '$lib/plugins/enabled';
   import { pluginById, ISLAND_PLUGINS } from '$lib/plugins/registry';
   import { readPluginState, writePluginState } from '$lib/plugins/storage';
   import { handleColorOf, rings, type RingItem } from '$lib/stores/rings.svelte';
@@ -170,8 +171,10 @@
     }
     return chosen;
   });
+  /** Modules the user has not switched off in Settings → Plugins. */
+  const enabledIslandPlugins = $derived(enabledPlugins(ISLAND_PLUGINS, s.disabledPlugins));
   const idlePlugins = $derived(
-    ISLAND_PLUGINS.filter((plugin) => s.islandIdle.plugins.includes(plugin.id))
+    enabledIslandPlugins.filter((plugin) => s.islandIdle.plugins.includes(plugin.id))
   );
   const idleShowsSummary = $derived(idleProviderItems.length === 0);
 
@@ -439,6 +442,19 @@
 
   // theme / scale / opacity / language follow the settings rune
   $effect(() => applyTheme(settings.value));
+
+  // A module switched off in Settings neither scans nor draws a badge.
+  $effect(() => {
+    attention.configure(
+      !s.disabledPlugins.includes('mail'),
+      !s.disabledPlugins.includes('calendar')
+    );
+  });
+
+  // A module switched off while its panel is open closes that panel at once.
+  $effect(() => {
+    if (activePluginId !== null && s.disabledPlugins.includes(activePluginId)) closePlugin();
+  });
 
   // Mail unread / calendar-soon badges are only useful in island mode.
   $effect(() => {
@@ -972,7 +988,7 @@
 
   {#if !loading}
     <div class="island-tools" role="toolbar" aria-label={t('island.pluginRail')}>
-      {#each ISLAND_PLUGINS as plugin, i (plugin.id)}
+      {#each enabledIslandPlugins as plugin, i (plugin.id)}
         {@const active = activePluginId === plugin.id}
         <button
           type="button"
@@ -994,6 +1010,24 @@
           {@render pluginBadge(plugin.id)}
         </button>
       {/each}
+      {#if enabledIslandPlugins.length === 0}
+        <!-- Do not leave the rail as a dead end: open Settings → Plugins. -->
+        <button
+          type="button"
+          class="tool tool-off"
+          aria-label={t('island.pluginsOff')}
+          title={t('island.pluginsOff')}
+          onclick={(e) => {
+            e.stopPropagation();
+            void openDashboard('settings');
+          }}
+          ondblclick={(e) => e.stopPropagation()}
+        >
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h9M17 7h3M4 17h3M11 17h9M15 4v6M9 14v6"></path>
+          </svg>
+        </button>
+      {/if}
     </div>
   {/if}
 {/snippet}
@@ -1530,6 +1564,12 @@
   .pill.island-open .open-layer .tool {
     animation: island-tool-pop 300ms cubic-bezier(0.2, 1.5, 0.4, 1) backwards;
     animation-delay: calc(var(--i, 0) * 18ms);
+  }
+
+  /* The solitary "all plugins are off" shortcut sits centred in the rail. */
+  .tool-off {
+    grid-column: 1 / -1;
+    justify-self: center;
   }
 
   .tool-badge {

@@ -229,6 +229,7 @@ export const mockSettings: Settings = {
   island: false,
   islandMargin: 12,
   islandIdle: { providers: [], plugins: [] },
+  disabledPlugins: [],
   islandAutoHide: false,
   petOnDesktop: false,
   petRoam: true,

@@ -82,6 +82,14 @@ test('reset all restores everything but the presets and the schema version', () 
   expect(reset.customPresets, 'the user\'s own presets survive').toEqual({ mine: { theme: 'light' } });
 });
 
+test('switching a plugin off marks its card modified, and reset clears the list', () => {
+  const off = mergeSettings(defaultSettings, { disabledPlugins: ['pet', 'mail'] });
+  expect(isCardModified('plugins', off, defaultSettings)).toBe(true);
+  expect(isCardModified('providers', off, defaultSettings), 'another card is untouched').toBe(false);
+  const reset = mergeSettings(off, resetPatch('plugins', defaultSettings));
+  expect(reset.disabledPlugins).toEqual([]);
+});
+
 test('a card reads as modified only when one of its own keys differs', () => {
   expect(isCardModified('appearance', defaultSettings, defaultSettings)).toBe(false);
   const edited = mergeSettings(defaultSettings, { scale: 1.2, edge: 'top' });
