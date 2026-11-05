@@ -205,7 +205,7 @@ src/                      SvelteKit frontend                     [FRONTEND]
   lib/components/         Ring.svelte, MiniBar.svelte, Popover.svelte, dashboard/ (tabs, history/, sessions/, settings/ cards), ...
   lib/plugins/            island plugin contract, registry, storage and built-in panels [FRONTEND]
   lib/plugins/status.ts   service-status view model (indicator / incident normalisation) [FRONTEND]
-  lib/pet/                desktop-pet simulation, bundled skins, speech, sprite import, desktop art mapping and the shared Mochi mascot [FRONTEND]
+  lib/pet/                desktop-pet simulation, bundled skins, themes/scenes, speech, sprite import, desktop art mapping, DyberPet pack model + frame player, deterministic assistant, optional local-model selection, and the shared Mochi mascot [FRONTEND]
   lib/builtin-presets.json built-in presets, shared with the tray (Rust include)
   lib/providers.ts        provider-agnostic frontend helpers      [FRONTEND]
 src-tauri/
@@ -229,6 +229,8 @@ src-tauri/
   src/wechat.rs           Windows UI Automation read-only WeChat conversation mirror  [BACKEND]
   src/status.rs           public Claude / OpenAI Statuspage summaries, `service_status`, 60 s cache [BACKEND]
   src/accounts.rs         extra-account commands (check_account_dir, pick_account_folder)  [BACKEND]
+  src/pet_pack.rs         DyberPet role import/list/remove; capped copy into data_dir/pet-packs, defensive manifest [BACKEND]
+  src/local_ai.rs         optional local-model bridge: loopback-only probe/chat, no credentials or redirects, bounded bodies [BACKEND]
   src/onboarding.rs       get_provider_setup (existence checks only)  [BACKEND]
   src/providers/          claude.rs, codex.rs, copilot.rs, openrouter.rs, opencode.rs, mod.rs (trait, registry, retry, cache) [BACKEND]
   src/alerts/             mod.rs (timer, once-only state), threshold.rs, predictive.rs, budget.rs, summary.rs, notifier.rs (native + webhook, focus gate) [BACKEND]
@@ -245,7 +247,7 @@ src-tauri/
   src/scheduler.rs        periodic refresh + ingest + maintenance, emits events  [BACKEND]
   src/updater.rs          in-app update check, never auto-installs [PLATFORM]
   tauri.conf.json, capabilities/, icons/                          [PLATFORM]
-docs/                     this file, ISLAND.md, PLATFORM.md, PROVIDERS.md, SESSIONS.md, STATUSLINE.md, PERFORMANCE.md, plans/desktop-pet.md, reference images
+docs/                     this file, ISLAND.md, PLATFORM.md, PROVIDERS.md, SESSIONS.md, STATUSLINE.md, PET-PACKS.md, PET-ASSISTANT.md, PERFORMANCE.md, plans/desktop-pet.md, reference images
 scripts/                  check-i18n.mjs, check-agents-settings.mjs, install-linux.sh, smoke-linux.sh
 .github/workflows/        CI builds for linux/macos/windows        [PLATFORM]
 ```

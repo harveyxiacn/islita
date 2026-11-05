@@ -16,7 +16,7 @@
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { t, tDyn, type MessageKey } from '$lib/i18n/i18n.svelte';
+  import { t, tDyn, hasKey, type MessageKey } from '$lib/i18n/i18n.svelte';
   import {
     OFFLINE_DECAY_CAP_MS,
     OFFLINE_NOTICE_MS,
@@ -34,9 +34,53 @@
     type PetReaction,
     type PetSkin,
     type PetState,
+    type PetTheme,
   } from '$lib/pet/pet';
+  import {
+    ASSISTANT_QUESTION_LIMIT,
+    answerPetQuestion,
+    assistantSuggestion,
+    buildAssistantContext,
+    type AssistantContext,
+    type AssistantPrevious,
+    type AssistantSuggestionId,
+    type AssistantTranslator,
+  } from '$lib/pet/assistant';
+  import {
+    DEFAULT_LOCAL_AI,
+    LOCAL_AI_STORAGE_ID,
+    localAiReady,
+    parseLocalAiConfig,
+    selectLocalAiServer,
+    serverSelectable,
+    type LocalAiConfig,
+    type LocalAiServer,
+  } from '$lib/pet/local-ai';
   import { DEEPSEEK_FORM_OPTIONS, PET_SKIN_OPTIONS, skinImage } from '$lib/pet/skins';
+  import {
+    assetUrl,
+    emitWindowEvent,
+    importPetPack,
+    isTauri,
+    listPetPacks,
+    localAiProbe,
+    localAiStatus,
+    petAiChat,
+    pickPetPackFolder,
+    removePetPack,
+  } from '$lib/api';
   import Mochi from '$lib/pet/Mochi.svelte';
+  import PackSprite from '$lib/pet/PackSprite.svelte';
+  import PetScene from '$lib/pet/PetScene.svelte';
+  import ThemeGlyph from '$lib/pet/ThemeGlyph.svelte';
+  import {
+    moodPackMode,
+    packIconPath,
+    parsePetPack,
+    type PackMode,
+    type PetPack,
+  } from '$lib/pet/pack';
+  import { PET_THEME_OPTIONS, resolvePetTheme } from '$lib/pet/themes';
   import {
     parseStoredSprite,
     spriteFileError,
@@ -46,7 +90,6 @@
   import { petSituation, petVoice, sayKey, situationMood, type PetSituation } from '$lib/pet/speech';
   import { petSpeech } from '$lib/pet/speech.svelte';
   import { pluginStorageKey, readPluginState, removePluginState, writePluginState } from '$lib/plugins/storage';
-  import { emitWindowEvent } from '$lib/api';
   import { settings } from '$lib/stores/settings.svelte';
   import { snapshot } from '$lib/stores/snapshot.svelte';
 
@@ -56,6 +99,29 @@
     rest: 3200,
     pat: 1200,
   };
+
+  interface ChatMessage {
+    id: number;
+    role: 'user' | 'assistant';
+    text: string;
+    source: 'builtin' | 'local' | null;
+    model: string | null;
+  }
+
+  const INITIAL_SUGGESTIONS: AssistantSuggestionId[] = [
+    'quota',
+    'reset',
+    'pet',
+    'feed',
+    'play',
+    'summary',
+  ];
+  const BUILTIN_ONLY_INTENTS = new Set([
+    'action',
+    'help',
+    'greeting',
+    'thanks',
+  ]);
 
   const ACTIONS: readonly { id: PetAction; label: MessageKey; icon: string }[] = [
     {
@@ -95,6 +161,34 @@
     pat: false,
   });
 
+  let packs = $state<PetPack[]>([]);
+  let packsLoading = $state(true);
+  let packsLoaded = $state(false);
+  let packBusy = $state(false);
+  let packError = $state<string | null>(null);
+
+  // Assistant chat lives only in this panel's memory; no history is persisted.
+  let messages = $state<ChatMessage[]>([]);
+  let questionDraft = $state('');
+  let thinking = $state(false);
+  let previous = $state<AssistantPrevious | null>(null);
+  let suggestionIds = $state<AssistantSuggestionId[]>([...INITIAL_SUGGESTIONS]);
+  let chatLog = $state<HTMLDivElement>();
+  let modelNotice = $state<string | null>(null);
+  let nextMessageId = 1;
+  let chatToken = 0;
+
+  // Optional local model: the config is persisted, the discovered list is not.
+  let aiConfig = $state<LocalAiConfig>({ ...DEFAULT_LOCAL_AI });
+  let servers = $state<LocalAiServer[]>([]);
+  let serversLoaded = $state(false);
+  let checkingServers = $state(false);
+  let modelOpen = $state(false);
+  let modelError = $state<string | null>(null);
+  let customEndpoint = $state('');
+  let probingCustom = $state(false);
+  let customError = $state<string | null>(null);
+
   let fileInput = $state<HTMLInputElement>();
   let nameInput = $state<HTMLInputElement>();
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -108,6 +202,14 @@
   const status = $derived(petStatus(pet));
   const statusLabel = $derived(tDyn(`plugin.pet.status.${status}`));
   const voice = $derived(petVoice(pet.skin, pet.deepseekForm));
+  const theme = $derived(resolvePetTheme(pet.skin, pet.theme));
+  const selectedPack = $derived(packs.find((entry) => entry.id === pet.packId) ?? null);
+  const packIcon = $derived(selectedPack?.icon ? assetUrl(packIconPath(selectedPack)) : null);
+  /** Reactions borrow the pack's pat/sleep act for a moment. */
+  const packMode = $derived.by((): PackMode => {
+    if (reacting) return reaction === 'rest' ? 'sleep' : 'pat';
+    return moodPackMode(status);
+  });
   const onDesktop = $derived(settings.value.petOnDesktop);
   const roam = $derived(settings.value.petRoam);
   /** a fresh island event, still inside its display window */
@@ -134,6 +236,17 @@
     { id: 'mood' as const, label: t('plugin.pet.mood'), value: pet.mood },
     { id: 'energy' as const, label: t('plugin.pet.energy'), value: pet.energy },
   ]);
+  const assistantT: AssistantTranslator = (key, params) => tDyn(key, params);
+  const selectedServer = $derived(
+    servers.find((server) => server.baseUrl === aiConfig.baseUrl) ?? null
+  );
+  const modelOptions = $derived.by(() => {
+    const list = selectedServer?.models ?? [];
+    if (aiConfig.model && !list.includes(aiConfig.model)) return [aiConfig.model, ...list];
+    return list;
+  });
+  const localActive = $derived(localAiReady(aiConfig) && isTauri());
+  const assistantModel = $derived(localActive ? aiConfig.model : null);
 
   function copyState(state: PetState): PetState {
     return { ...state, sprite: state.sprite ? { ...state.sprite } : null };
@@ -194,7 +307,7 @@
       reactionTimer = setTimeout(() => {
         reacting = false;
         reactionTimer = null;
-      }, 520);
+      }, 1000);
     });
   }
 
@@ -248,14 +361,25 @@
   }
 
   function chooseSkin(skin: PetSkin) {
-    if (pet.skin === skin) return;
+    if (pet.skin === skin && pet.packId === null) return;
     const option = PET_SKIN_OPTIONS.find((entry) => entry.id === skin);
     const defaultNames = PET_SKIN_OPTIONS.map((entry) => t(entry.defaultName));
     // Follow the new character's name while the pet still uses a built-in one;
     // a name the user typed is never overwritten.
     const name = option && defaultNames.includes(pet.name) ? t(option.defaultName) : pet.name;
     const now = Date.now();
-    pet = { ...advancePet(pet, now).state, skin, name, lastSeen: now };
+    // Choosing a bundled skin deliberately leaves an imported pack.
+    pet = { ...advancePet(pet, now).state, skin, name, packId: null, lastSeen: now };
+    clearReaction();
+    error = null;
+    packError = null;
+    scheduleSave();
+  }
+
+  function chooseTheme(theme: PetTheme) {
+    if (pet.theme === theme) return;
+    const now = Date.now();
+    pet = { ...advancePet(pet, now).state, theme, lastSeen: now };
     clearReaction();
     error = null;
     scheduleSave();
@@ -268,6 +392,317 @@
     clearReaction();
     error = null;
     scheduleSave();
+  }
+
+  function messageOf(value: unknown): string {
+    if (value instanceof Error) return value.message;
+    if (typeof value === 'string') return value;
+    return String(value);
+  }
+
+  function localAiErrorText(cause: unknown): string {
+    const raw = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : '';
+    const key = `plugin.pet.assistant.error.${raw.trim().toLowerCase()}`;
+    return raw && hasKey(key) ? tDyn(key) : t('plugin.pet.assistant.error.generic');
+  }
+
+  function serverName(server: LocalAiServer): string {
+    const key = `plugin.pet.assistant.model.server.${server.id}`;
+    return hasKey(key) ? tDyn(key) : server.name || server.id;
+  }
+
+  function issueText(issue: string | null): string {
+    if (!issue) return '';
+    const key = `plugin.pet.assistant.model.issue.${issue}`;
+    return hasKey(key) ? tDyn(key) : issue;
+  }
+
+  function assistantContext(): AssistantContext {
+    return {
+      snapshot: snapshot.value,
+      pet,
+      settings: settings.value,
+      t: assistantT,
+      now: Date.now(),
+      localModel: assistantModel,
+      cooldowns,
+      previous,
+    };
+  }
+
+  function addChatMessage(message: Omit<ChatMessage, 'id'>) {
+    messages = [...messages, { id: nextMessageId++, ...message }].slice(-16);
+  }
+
+  async function scrollChat() {
+    await tick();
+    if (chatLog) chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  function seedChat() {
+    const answer = answerPetQuestion('hello', assistantContext());
+    messages = [
+      { id: nextMessageId++, role: 'assistant', text: answer.text, source: 'builtin', model: null },
+    ];
+    suggestionIds = ['quota', 'reset', 'pet', 'summary'];
+    previous = null;
+  }
+
+  function resetChat() {
+    chatToken += 1;
+    thinking = false;
+    modelNotice = null;
+    seedChat();
+    void scrollChat();
+  }
+
+  function saveAiConfig(next: LocalAiConfig) {
+    aiConfig = next;
+    writePluginState(LOCAL_AI_STORAGE_ID, next);
+  }
+
+  function toggleModelSettings() {
+    modelOpen = !modelOpen;
+    if (modelOpen && !serversLoaded) void refreshLocalAi();
+  }
+
+  async function refreshLocalAi() {
+    if (!isTauri() || checkingServers) return;
+    checkingServers = true;
+    modelError = null;
+    try {
+      let list = await localAiStatus();
+      // A saved custom endpoint is not one of the three known ports; probe it
+      // again so its model list and state are fresh when settings are opened.
+      if (aiConfig.baseUrl && !list.some((server) => server.baseUrl === aiConfig.baseUrl)) {
+        try {
+          list = [...list, await localAiProbe(aiConfig.baseUrl)];
+        } catch (cause) {
+          modelError = localAiErrorText(cause);
+        }
+      }
+      servers = list;
+      if (!aiConfig.baseUrl) {
+        const first = list.find(serverSelectable);
+        if (first) saveAiConfig(selectLocalAiServer(aiConfig, first));
+      }
+    } catch (cause) {
+      modelError = localAiErrorText(cause);
+    } finally {
+      checkingServers = false;
+      serversLoaded = true;
+    }
+  }
+
+  function chooseServer(server: LocalAiServer) {
+    if (!serverSelectable(server)) return;
+    saveAiConfig(selectLocalAiServer(aiConfig, server));
+    modelError = null;
+    customError = null;
+  }
+
+  function onModelPicked(event: Event) {
+    const model = (event.currentTarget as HTMLSelectElement).value;
+    if (!model) return;
+    saveAiConfig({ ...aiConfig, model });
+  }
+
+  function setLocalAiEnabled(event: Event) {
+    const enabled = (event.currentTarget as HTMLInputElement).checked;
+    if (enabled && !localAiReady({ ...aiConfig, enabled: true })) return;
+    saveAiConfig({ ...aiConfig, enabled });
+  }
+
+  async function probeCustomEndpoint() {
+    if (!isTauri() || probingCustom) return;
+    const base = customEndpoint.trim();
+    if (!base) return;
+    probingCustom = true;
+    customError = null;
+    try {
+      const server = await localAiProbe(base);
+      servers = [...servers.filter((entry) => entry.id !== 'custom'), server];
+      serversLoaded = true;
+      if (serverSelectable(server)) {
+        saveAiConfig(selectLocalAiServer(aiConfig, server));
+        customEndpoint = server.baseUrl;
+      } else {
+        customError = t('plugin.pet.assistant.model.customError', {
+          message: issueText(server.issue) || t('plugin.pet.assistant.model.noSelection'),
+        });
+      }
+    } catch (cause) {
+      customError = t('plugin.pet.assistant.model.customError', {
+        message: localAiErrorText(cause),
+      });
+    } finally {
+      probingCustom = false;
+    }
+  }
+
+  function useSuggestion(id: AssistantSuggestionId) {
+    const suggestion = assistantSuggestion(id);
+    void ask(suggestion.command, tDyn(suggestion.labelKey));
+  }
+
+  function submitChat(event: SubmitEvent) {
+    event.preventDefault();
+    void ask(questionDraft);
+  }
+
+  /**
+   * Answer one question. The deterministic answer is always computed: it is
+   * the reply itself when no model is connected, and the fallback when the
+   * local model is busy or rejects the request. Actions run immediately.
+   */
+  async function ask(raw: string, display?: string) {
+    if (thinking) return;
+    const question = raw.trim().slice(0, ASSISTANT_QUESTION_LIMIT);
+    if (!question) return;
+    questionDraft = '';
+    addChatMessage({
+      role: 'user',
+      text: (display?.trim() || question).slice(0, ASSISTANT_QUESTION_LIMIT),
+      source: null,
+      model: null,
+    });
+    const answer = answerPetQuestion(question, assistantContext());
+    previous = { intent: answer.intent, provider: answer.provider };
+    suggestionIds = [...answer.suggestions];
+    if (answer.action) perform(answer.action);
+    modelNotice = null;
+    const token = ++chatToken;
+    const useLocal = assistantModel !== null && !BUILTIN_ONLY_INTENTS.has(answer.intent);
+    if (!useLocal) {
+      addChatMessage({ role: 'assistant', text: answer.text, source: 'builtin', model: null });
+      await scrollChat();
+      return;
+    }
+    thinking = true;
+    await scrollChat();
+    try {
+      const reply = await petAiChat({
+        baseUrl: aiConfig.baseUrl,
+        model: aiConfig.model,
+        question,
+        context: buildAssistantContext(snapshot.value, pet, settings.value),
+        // Give the model the app's grounded answer so it can phrase it warmly
+        // instead of re-deriving (and sometimes misreading) the figures.
+        reference: answer.intent === 'unknown' ? '' : answer.text,
+      });
+      if (token !== chatToken) return;
+      addChatMessage({
+        role: 'assistant',
+        text: reply.text,
+        source: 'local',
+        model: reply.model || aiConfig.model,
+      });
+    } catch (cause) {
+      if (token !== chatToken) return;
+      modelNotice = localAiErrorText(cause);
+      addChatMessage({ role: 'assistant', text: answer.text, source: 'builtin', model: null });
+    } finally {
+      if (token === chatToken) thinking = false;
+      await scrollChat();
+    }
+  }
+
+  function sortPacks(list: PetPack[]): PetPack[] {
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Load the installed packs and reconcile a selection removed outside the app. */
+  async function refreshPacks() {
+    packsLoading = true;
+    try {
+      const loaded = (await listPetPacks())
+        .map(parsePetPack)
+        .filter((entry): entry is PetPack => entry !== null);
+      packs = sortPacks(loaded);
+      if (pet.packId && !packs.some((entry) => entry.id === pet.packId)) {
+        const now = Date.now();
+        pet = { ...advancePet(pet, now).state, packId: null, lastSeen: now };
+        scheduleSave();
+      }
+      packError = null;
+    } catch (cause) {
+      packError = t('plugin.pet.pack.error', { message: messageOf(cause) });
+    } finally {
+      packsLoading = false;
+      packsLoaded = true;
+    }
+  }
+
+  function selectPack(id: string) {
+    const pack = id ? packs.find((entry) => entry.id === id) ?? null : null;
+    if (pack === null && id !== '') return;
+    if ((pack?.id ?? null) === pet.packId) return;
+    const now = Date.now();
+    const advanced = advancePet(pet, now).state;
+    const builtInNames = [
+      ...PET_SKIN_OPTIONS.map((entry) => t(entry.defaultName)),
+      ...packs.map((entry) => entry.name),
+    ];
+    // As with skins, only a name that still belongs to a bundled character or
+    // another pack is replaced; a name the user typed is kept.
+    const name =
+      pack && builtInNames.includes(pet.name)
+        ? sanitizeName(pack.name, pet.name)
+        : pet.name;
+    pet = { ...advanced, packId: pack?.id ?? null, name, lastSeen: now };
+    clearReaction();
+    error = null;
+    packError = null;
+    scheduleSave();
+    if (pack) triggerReaction();
+  }
+
+  function onPackPicked(event: Event) {
+    selectPack((event.currentTarget as HTMLSelectElement).value);
+  }
+
+  async function importPack() {
+    if (packBusy || !isTauri()) return;
+    packBusy = true;
+    packError = null;
+    try {
+      const folder = await pickPetPackFolder();
+      if (!folder) return;
+      const pack = parsePetPack(await importPetPack(folder));
+      if (!pack) {
+        packError = t('plugin.pet.pack.error', { message: t('plugin.pet.pack.invalid') });
+        return;
+      }
+      packs = sortPacks([...packs.filter((entry) => entry.id !== pack.id), pack]);
+      selectPack(pack.id);
+      markSaved();
+    } catch (cause) {
+      packError = t('plugin.pet.pack.error', { message: messageOf(cause) });
+    } finally {
+      packBusy = false;
+    }
+  }
+
+  async function removeSelectedPack() {
+    const pack = selectedPack;
+    if (!pack || packBusy) return;
+    if (!window.confirm(t('plugin.pet.pack.removeConfirm', { name: pack.name }))) return;
+    packBusy = true;
+    packError = null;
+    try {
+      await removePetPack(pack.id);
+      packs = packs.filter((entry) => entry.id !== pack.id);
+      if (pet.packId === pack.id) {
+        const now = Date.now();
+        pet = { ...advancePet(pet, now).state, packId: null, lastSeen: now };
+        scheduleSave();
+      }
+      markSaved();
+    } catch (cause) {
+      packError = t('plugin.pet.pack.error', { message: messageOf(cause) });
+    } finally {
+      packBusy = false;
+    }
   }
 
   function cancelRename() {
@@ -343,6 +778,7 @@
     pet = createDefaultPet(Date.now());
     clearReaction();
     error = null;
+    packError = null;
     renaming = false;
     saved = false;
     reacting = false;
@@ -477,9 +913,20 @@
     pet = advanced.state;
     if (hadSavedState && advanced.elapsedMs >= OFFLINE_NOTICE_MS) setReaction('offline', 8000);
 
+    aiConfig = parseLocalAiConfig(readPluginState(LOCAL_AI_STORAGE_ID, null));
+    if (aiConfig.serverId === 'custom') customEndpoint = aiConfig.baseUrl;
+    seedChat();
+    // Re-check a previously enabled server in the background; chat itself
+    // falls back to built-in answers if it has gone away.
+    if (aiConfig.enabled) void refreshLocalAi();
+
     const tickTimer = setInterval(() => {
       pet = advancePet(pet, Date.now()).state;
     }, 30_000);
+
+    // Imported packs live in app data, not localStorage: the panel asks the
+    // backend once per open and drops a selection whose folder has gone away.
+    void refreshPacks();
 
     // The detached pet window shares the same localStorage entry. Its writes
     // arrive here as a same-origin `storage` event (or the shell's custom
@@ -497,6 +944,8 @@
       window.removeEventListener('island-plugin-state', onPluginState);
       window.removeEventListener('storage', onStorage);
       importToken += 1;
+      chatToken += 1;
+      thinking = false;
       clearInterval(tickTimer);
       if (saveTimer) {
         clearTimeout(saveTimer);
@@ -545,7 +994,8 @@
     </button>
   </header>
 
-  <div class="scene" data-status={status}>
+  <div class="scene" data-status={status} data-pet-theme={theme}>
+    <PetScene theme={theme} />
     <p
       class="reaction"
       data-situation={reaction ?? situation}
@@ -574,6 +1024,17 @@
         {:else}
           <img class="sprite-portrait" src={sprite.dataUrl} alt="" draggable="false" />
         {/if}
+      {:else if pet.packId && !packsLoaded}
+        <span class="pack-placeholder" aria-hidden="true"></span>
+      {:else if selectedPack}
+        <span class="pack-art">
+          <PackSprite
+            pack={selectedPack}
+            mode={packMode}
+            fullness={pet.fullness}
+            level={pet.level}
+          />
+        </span>
       {:else if bundledImage}
         <img
           class="skin-card"
@@ -683,6 +1144,228 @@
     {/each}
   </div>
 
+  <section class="assistant" aria-labelledby="pet-assistant-title" aria-busy={thinking}>
+    <header class="assistant-head">
+      <div class="assistant-title">
+        <svg class="assistant-icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 1.6 9.4 5l3.4 1.4L9.4 7.8 8 11.2 6.6 7.8 3.2 6.4 6.6 5 8 1.6ZM12.6 10l.7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7.7-1.7Z" />
+        </svg>
+        <div class="assistant-heading">
+          <strong id="pet-assistant-title">{t('plugin.pet.assistant.title')}</strong>
+          <span>{t('plugin.pet.assistant.subtitle')}</span>
+        </div>
+      </div>
+      <div class="assistant-tools">
+        <button class="link" type="button" onclick={resetChat}>
+          {t('plugin.pet.assistant.clear')}
+        </button>
+        <button
+          class="link"
+          type="button"
+          onclick={toggleModelSettings}
+          aria-expanded={modelOpen}
+          aria-controls="pet-model-settings"
+        >
+          {t('plugin.pet.assistant.model.configure')}
+        </button>
+      </div>
+    </header>
+
+    {#if modelOpen}
+      <div class="model-settings" id="pet-model-settings">
+        <p class="model-desc">{t('plugin.pet.assistant.model.desc')}</p>
+        <p class="model-privacy">{t('plugin.pet.assistant.model.privacy')}</p>
+        <p class="model-recommend">{t('plugin.pet.assistant.model.recommend')}</p>
+        {#if !isTauri()}
+          <p class="model-note">{t('plugin.pet.assistant.model.desktopOnly')}</p>
+        {:else}
+          <div class="model-actions">
+            <button
+              class="ghost model-check"
+              type="button"
+              onclick={refreshLocalAi}
+              disabled={checkingServers}
+              aria-busy={checkingServers}
+            >
+              {checkingServers
+                ? t('plugin.pet.assistant.model.checking')
+                : t('plugin.pet.assistant.model.check')}
+            </button>
+            <code class="model-hint">{t('plugin.pet.assistant.model.hint')}</code>
+          </div>
+          {#if modelError}
+            <p class="model-error" role="status">{modelError}</p>
+          {/if}
+          {#if serversLoaded && servers.length === 0}
+            <p class="model-note">{t('plugin.pet.assistant.model.none')}</p>
+          {:else if servers.length > 0}
+            <div class="server-list" role="group" aria-label={t('plugin.pet.assistant.model.title')}>
+              {#each servers as server (server.id)}
+                <div
+                  class="server"
+                  class:selected={server.baseUrl === aiConfig.baseUrl}
+                  class:off={!serverSelectable(server)}
+                >
+                  <div class="server-info">
+                    <strong>{serverName(server)}</strong>
+                    <span title={server.models.join(', ')}>
+                      {#if server.models.length > 0}
+                        {t('plugin.pet.assistant.model.models', { count: server.models.length })}
+                        · {server.models.slice(0, 2).join(', ')}{server.models.length > 2
+                          ? '…'
+                          : ''}
+                      {:else}
+                        {issueText(server.issue)}
+                      {/if}
+                    </span>
+                  </div>
+                  <button
+                    class="mini server-use"
+                    type="button"
+                    onclick={() => chooseServer(server)}
+                    disabled={!serverSelectable(server)}
+                  >
+                    {server.baseUrl === aiConfig.baseUrl
+                      ? t('plugin.pet.assistant.model.selected')
+                      : t('plugin.pet.assistant.model.use')}
+                  </button>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if modelOptions.length > 0}
+            <label class="model-field">
+              <span>{t('plugin.pet.assistant.model.model')}</span>
+              <select value={aiConfig.model} onchange={onModelPicked}>
+                {#each modelOptions as model (model)}
+                  <option value={model}>{model}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
+          <label class="model-enable">
+            <input
+              type="checkbox"
+              checked={aiConfig.enabled}
+              disabled={!aiConfig.baseUrl || !aiConfig.model}
+              onchange={setLocalAiEnabled}
+            />
+            <span>{t('plugin.pet.assistant.model.enable')}</span>
+          </label>
+          <p class="model-note">
+            {aiConfig.enabled
+              ? t('plugin.pet.assistant.model.enabledHint')
+              : aiConfig.baseUrl && aiConfig.model
+                ? t('plugin.pet.assistant.model.disabledHint')
+                : t('plugin.pet.assistant.model.noSelection')}
+          </p>
+          <div class="custom-endpoint">
+            <label class="model-field">
+              <span>{t('plugin.pet.assistant.model.custom')}</span>
+              <input
+                type="url"
+                bind:value={customEndpoint}
+                maxlength={300}
+                placeholder={t('plugin.pet.assistant.model.customPlaceholder')}
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+            <button
+              class="ghost"
+              type="button"
+              onclick={probeCustomEndpoint}
+              disabled={probingCustom || !customEndpoint.trim()}
+              aria-busy={probingCustom}
+            >
+              {probingCustom
+                ? t('plugin.pet.assistant.model.probing')
+                : t('plugin.pet.assistant.model.probe')}
+            </button>
+          </div>
+          {#if customError}
+            <p class="model-error" role="status">{customError}</p>
+          {/if}
+        {/if}
+      </div>
+    {/if}
+
+    <div
+      class="assistant-log"
+      bind:this={chatLog}
+      role="log"
+      aria-live="polite"
+      aria-relevant="additions"
+    >
+      {#each messages as message (message.id)}
+        <div class="chat-message" data-role={message.role}>
+          <span class="chat-who">
+            {message.role === 'user' ? t('plugin.pet.assistant.you') : pet.name}
+          </span>
+          <div class="chat-bubble">
+            <p>{message.text}</p>
+            {#if message.role === 'assistant'}
+              <span class="chat-source">
+                {message.source === 'local'
+                  ? t('plugin.pet.assistant.local', { model: message.model ?? '' })
+                  : t('plugin.pet.assistant.builtin')}
+              </span>
+            {/if}
+          </div>
+        </div>
+      {/each}
+      {#if thinking}
+        <div class="chat-message" data-role="assistant">
+          <span class="chat-who">{pet.name}</span>
+          <div class="chat-bubble chat-thinking">
+            <span class="typing" aria-hidden="true"><i></i><i></i><i></i></span>
+            {t('plugin.pet.assistant.thinking', { name: pet.name })}
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    {#if modelNotice}
+      <p class="assistant-notice" role="status">{modelNotice}</p>
+    {/if}
+
+    <div
+      class="assistant-suggestions"
+      role="group"
+      aria-label={t('plugin.pet.assistant.title')}
+    >
+      {#each suggestionIds as id (id)}
+        <button
+          class="assistant-chip"
+          type="button"
+          onclick={() => useSuggestion(id)}
+          disabled={thinking}
+        >
+          {tDyn(assistantSuggestion(id).labelKey)}
+        </button>
+      {/each}
+    </div>
+
+    <form class="assistant-form" onsubmit={submitChat}>
+      <input
+        class="assistant-input"
+        bind:value={questionDraft}
+        type="text"
+        maxlength={ASSISTANT_QUESTION_LIMIT}
+        placeholder={t('plugin.pet.assistant.placeholder')}
+        aria-label={t('plugin.pet.assistant.placeholder')}
+        autocomplete="off"
+      />
+      <button
+        class="assistant-send"
+        type="submit"
+        disabled={thinking || !questionDraft.trim()}
+      >
+        {t('plugin.pet.assistant.send')}
+      </button>
+    </form>
+  </section>
+
   <div class="skins" role="group" aria-label={t('plugin.pet.skin')}>
     <span class="skins-label" aria-hidden="true">{t('plugin.pet.skin')}</span>
     <div class="skin-options">
@@ -719,8 +1402,85 @@
     </div>
   {/if}
 
+  <div class="themes" role="group" aria-label={t('plugin.pet.theme')}>
+    <span class="skins-label" aria-hidden="true">{t('plugin.pet.theme')}</span>
+    <div class="theme-options">
+      {#each PET_THEME_OPTIONS as option (option.id)}
+        <button
+          class="theme-option"
+          type="button"
+          aria-pressed={pet.theme === option.id}
+          title={t(option.hint)}
+          onclick={() => chooseTheme(option.id)}
+        >
+          <span class="theme-swatch" data-pet-theme={option.id}>
+            <ThemeGlyph theme={option.id} />
+          </span>
+          <span class="theme-name">{t(option.label)}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <div class="packs" role="group" aria-label={t('plugin.pet.pack')}>
+    <div class="packs-head">
+      <span class="skins-label" aria-hidden="true">{t('plugin.pet.pack')}</span>
+      <div class="pack-tools">
+        <button
+          class="ghost pack-import"
+          type="button"
+          onclick={importPack}
+          disabled={packBusy || !isTauri()}
+          aria-busy={packBusy}
+          title={isTauri() ? t('plugin.pet.pack.empty') : t('plugin.pet.pack.desktopOnly')}
+        >
+          {packBusy ? t('plugin.pet.pack.importing') : t('plugin.pet.pack.import')}
+        </button>
+        <button
+          class="link pack-remove"
+          type="button"
+          onclick={removeSelectedPack}
+          disabled={!selectedPack || packBusy}
+        >
+          {t('plugin.pet.pack.remove')}
+        </button>
+      </div>
+    </div>
+    <div class="pack-row">
+      <select
+        class="pack-select"
+        value={pet.packId ?? ''}
+        onchange={onPackPicked}
+        aria-label={t('plugin.pet.pack')}
+        disabled={packsLoading || packBusy}
+      >
+        <option value="">{t('plugin.pet.pack.bundled')}</option>
+        {#each packs as pack (pack.id)}
+          <option value={pack.id}>{pack.name}{pack.author ? ` — ${pack.author}` : ''}</option>
+        {/each}
+      </select>
+      {#if packIcon}
+        <img class="pack-icon" src={packIcon} alt="" draggable="false" />
+      {/if}
+    </div>
+    <p class="pack-note" class:error={!!packError} aria-live="polite">
+      {#if packError}
+        {packError}
+      {:else if !isTauri()}
+        {t('plugin.pet.pack.desktopOnly')}
+      {:else if packsLoaded && packs.length === 0}
+        {t('plugin.pet.pack.empty')}
+      {:else}
+        {t('plugin.pet.pack.hint')}
+      {/if}
+    </p>
+  </div>
+
   {#if sprite}
     <p class="skin-note">{t('plugin.pet.skin.overridden')}</p>
+    {#if selectedPack}
+      <p class="skin-note">{t('plugin.pet.pack.overridden')}</p>
+    {/if}
   {/if}
 
   <div class="desktop" role="group" aria-label={t('plugin.pet.desktop.title')}>
@@ -884,7 +1644,7 @@
     align-items: flex-end;
     justify-content: center;
     height: 8rem;
-    border: 1px solid var(--border);
+    border: 1px solid var(--pet-scene-border, var(--border));
     border-radius: 0.75rem;
     background:
       radial-gradient(ellipse at 50% 82%, rgb(240 163 94 / 0.14), transparent 62%),
@@ -901,10 +1661,10 @@
     min-height: 1.35rem;
     margin: 0;
     padding: 0.1875rem 0.5rem;
-    border: 1px solid var(--border);
+    border: 1px solid var(--pet-bubble-border, var(--border));
     border-radius: 0.5rem;
-    background: var(--surface-3, var(--surface-2));
-    color: var(--muted);
+    background: var(--pet-bubble-bg, var(--surface-3, var(--surface-2)));
+    color: var(--pet-bubble-text, var(--muted));
     font-size: 0.6875rem;
     line-height: 1.3;
     text-align: center;
@@ -952,6 +1712,23 @@
     justify-content: center;
     width: 5.5rem;
     height: 5.5rem;
+  }
+
+  .pack-art {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    width: 5.9rem;
+    height: 5.5rem;
+  }
+
+  .pack-placeholder {
+    width: 4rem;
+    height: 4rem;
+    margin-bottom: 0.2rem;
+    border-radius: 50%;
+    background: var(--surface-2);
+    opacity: 0.45;
   }
 
   .skin-card {
@@ -1265,6 +2042,424 @@
     white-space: nowrap;
   }
 
+  .assistant {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4375rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.625rem;
+    background: var(--surface-2);
+  }
+
+  .assistant-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.3125rem;
+  }
+
+  .assistant-title {
+    display: flex;
+    flex: 1 1 9rem;
+    gap: 0.375rem;
+    min-width: 0;
+  }
+
+  .assistant-icon {
+    flex: none;
+    width: 0.9375rem;
+    height: 0.9375rem;
+    margin-top: 0.0625rem;
+    fill: var(--focus);
+  }
+
+  .assistant-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 0.0625rem;
+    min-width: 0;
+  }
+
+  .assistant-heading strong {
+    color: var(--text);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .assistant-heading span {
+    color: var(--faint);
+    font-size: 0.5625rem;
+    line-height: 1.3;
+  }
+
+  .assistant-tools {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.4375rem;
+  }
+
+  .assistant-tools .link {
+    font-size: 0.625rem;
+  }
+
+  .model-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.4375rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4375rem;
+    background: var(--surface-3, var(--surface-2));
+  }
+
+  .model-desc,
+  .model-privacy,
+  .model-recommend,
+  .model-note,
+  .model-error {
+    margin: 0;
+    font-size: 0.5938rem;
+    line-height: 1.4;
+  }
+
+  .model-desc {
+    color: var(--muted);
+  }
+
+  .model-privacy,
+  .model-recommend,
+  .model-note {
+    color: var(--faint);
+  }
+
+  .model-error {
+    color: var(--critical);
+  }
+
+  .model-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .model-check {
+    font-size: 0.625rem;
+  }
+
+  .model-hint {
+    display: block;
+    max-width: 100%;
+    padding: 0.125rem 0.3125rem;
+    border-radius: 0.3125rem;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 0.5625rem;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .server-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1875rem;
+  }
+
+  .server {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.3125rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    background: var(--surface-2);
+  }
+
+  .server.selected {
+    border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+    background: color-mix(in srgb, var(--focus) 8%, var(--surface-2));
+  }
+
+  .server.off {
+    opacity: 0.68;
+  }
+
+  .server-info {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0.0625rem;
+    min-width: 0;
+  }
+
+  .server-info strong {
+    color: var(--text);
+    font-size: 0.625rem;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .server-info span {
+    color: var(--faint);
+    font-size: 0.5625rem;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .server-use {
+    flex: none;
+    padding: 0.0625rem 0.3125rem;
+    font-size: 0.5625rem;
+  }
+
+  .model-field {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.5938rem;
+  }
+
+  .model-field > span {
+    flex: none;
+    min-width: 5rem;
+  }
+
+  .model-field select,
+  .model-field input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.25rem 0.3125rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 0.625rem;
+  }
+
+  .model-field select:focus-visible,
+  .model-field input:focus-visible,
+  .assistant-input:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--focus) 65%, transparent);
+    outline-offset: 1px;
+  }
+
+  .model-enable {
+    display: flex;
+    align-items: center;
+    gap: 0.3125rem;
+    color: var(--text);
+    font-size: 0.625rem;
+  }
+
+  .model-enable input {
+    accent-color: var(--focus);
+  }
+
+  .custom-endpoint {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.25rem;
+  }
+
+  .custom-endpoint .model-field {
+    flex: 1 1 auto;
+  }
+
+  .assistant-log {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    max-height: 13.5rem;
+    padding-right: 0.125rem;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .chat-message {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    max-width: 92%;
+    min-width: 0;
+  }
+
+  .chat-message[data-role='user'] {
+    align-self: flex-end;
+    align-items: flex-end;
+  }
+
+  .chat-who {
+    color: var(--faint);
+    font-size: 0.5625rem;
+    line-height: 1.2;
+  }
+
+  .chat-bubble {
+    min-width: 0;
+    padding: 0.3125rem 0.4375rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--surface-3, var(--surface-2));
+  }
+
+  .chat-message[data-role='user'] .chat-bubble {
+    border-color: color-mix(in srgb, var(--focus) 35%, var(--border));
+    background: color-mix(in srgb, var(--focus) 12%, var(--surface-2));
+  }
+
+  .chat-bubble p {
+    margin: 0;
+    color: var(--text);
+    font-size: 0.6875rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .chat-source {
+    display: block;
+    margin-top: 0.1875rem;
+    color: var(--faint);
+    font-size: 0.5625rem;
+    line-height: 1.25;
+  }
+
+  .chat-thinking {
+    display: flex;
+    align-items: center;
+    gap: 0.3125rem;
+    color: var(--muted);
+    font-size: 0.6875rem;
+    line-height: 1.3;
+  }
+
+  .typing {
+    display: inline-flex;
+    flex: none;
+    gap: 2px;
+  }
+
+  .typing i {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pet-typing 1s ease-in-out infinite;
+  }
+
+  .typing i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .typing i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes pet-typing {
+    0%,
+    60%,
+    100% {
+      opacity: 0.25;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+  }
+
+  .assistant-notice {
+    margin: 0;
+    padding: 0.25rem 0.375rem;
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--critical) 10%, transparent);
+    color: var(--critical);
+    font-size: 0.5938rem;
+    line-height: 1.35;
+  }
+
+  .assistant-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .assistant-chip {
+    padding: 0.1875rem 0.4375rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.5938rem;
+    line-height: 1.3;
+    transition:
+      border-color var(--dur-ui) var(--ease-out),
+      color var(--dur-ui) var(--ease-out);
+  }
+
+  .assistant-chip:hover:not(:disabled) {
+    border-color: var(--border-strong, var(--border));
+    color: var(--text);
+  }
+
+  .assistant-chip:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .assistant-form {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .assistant-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.3125rem 0.4375rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4375rem;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.6875rem;
+    line-height: 1.3;
+  }
+
+  .assistant-input::placeholder {
+    color: var(--faint);
+  }
+
+  .assistant-send {
+    flex: none;
+    padding: 0.3125rem 0.5625rem;
+    border-radius: 0.4375rem;
+    background: var(--focus);
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .assistant-send:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .typing i {
+      animation: none;
+    }
+  }
+
   .skins {
     display: flex;
     align-items: center;
@@ -1324,6 +2519,153 @@
     color: var(--faint);
     font-size: 0.5625rem;
     line-height: 1.35;
+  }
+
+  .themes {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .theme-options {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.1875rem;
+    min-width: 0;
+    padding: 0.125rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--surface-2);
+  }
+
+  .theme-option {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0.2rem 0.35rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.5938rem;
+    line-height: 1.3;
+    text-align: left;
+  }
+
+  .theme-option:hover {
+    color: var(--text);
+  }
+
+  .theme-option[aria-pressed='true'] {
+    background: var(--surface-3, var(--surface-2));
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .theme-swatch {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 0.3rem;
+    background: var(--pet-swatch, linear-gradient(135deg, #fbf7ea, #c9eef6));
+    color: var(--pet-scene-text, #fff);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+  }
+
+  .theme-swatch[data-pet-theme='auto'] {
+    background: conic-gradient(from 210deg, #fbf7ea, #8fae7a, #0a2233, #3fd8e6, #fbf7ea);
+    color: #fff;
+  }
+
+  .theme-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .packs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .packs-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .pack-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .pack-import {
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pack-remove {
+    font-size: 0.625rem;
+  }
+
+  .pack-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .pack-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 1.55rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4375rem;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 0.625rem;
+    outline: none;
+  }
+
+  .pack-select:focus-visible {
+    border-color: var(--focus);
+  }
+
+  .pack-select:disabled {
+    opacity: 0.6;
+  }
+
+  .pack-icon {
+    flex: none;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 0.35rem;
+    background: var(--surface-2);
+    object-fit: cover;
+    box-shadow: 0 0 0 1px var(--border);
+  }
+
+  .pack-note {
+    margin: 0;
+    color: var(--faint);
+    font-size: 0.5625rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  .pack-note.error {
+    color: var(--critical);
   }
 
   .desktop {

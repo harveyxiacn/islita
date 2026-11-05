@@ -47,6 +47,8 @@ import type {
 } from './types';
 import type { AnalysisSettings, EvaluationPreview, EvaluationReport, RequirementAssessment, SessionDetail, SessionInsights, SessionListQuery, SessionListResult, TaskCompletion } from './session-types';
 import type { ServiceStatusReport } from './plugins/status';
+import type { PetPack } from './pet/pack';
+import type { LocalAiServer } from './pet/local-ai';
 import type { SettingsPatch } from './settings-writer';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
@@ -300,6 +302,46 @@ export const petSetDragging = (dragging: boolean) =>
 export const petSetRoaming = (allowed: boolean) => invoke<void>('pet_set_roaming', { allowed });
 /** JS drag fallback; dx/dy are logical pixels. */
 export const petMoveBy = (dx: number, dy: number) => invoke<void>('pet_move_by', { dx, dy });
+
+// ---- imported DyberPet packs ----
+/** Native folder dialog for a DyberPet role folder; null when cancelled. */
+export const pickPetPackFolder = () => invoke<string | null>('pick_pet_pack_folder');
+/** Copy the role folder into app data and return its normalised manifest. */
+export const importPetPack = (folder: string) => invoke<PetPack>('import_pet_pack', { folder });
+/** Every imported pack; an empty list in browser previews. */
+export const listPetPacks = async (): Promise<PetPack[]> => {
+  if (!isTauri()) return [];
+  return (await invoke<PetPack[] | undefined>('list_pet_packs')) ?? [];
+};
+export const removePetPack = (id: string) => invoke<void>('remove_pet_pack', { id });
+
+// ---- optional local model for the pet assistant ----
+export interface PetAiChatRequest {
+  baseUrl: string;
+  model: string;
+  question: string;
+  context: string;
+  reference: string;
+}
+
+export interface PetAiChatReply {
+  text: string;
+  model: string;
+}
+
+/** Probe Ollama, LM Studio and llama.cpp on their usual loopback ports. */
+export const localAiStatus = async (): Promise<LocalAiServer[]> => {
+  if (!isTauri()) return [];
+  return (await invoke<LocalAiServer[] | undefined>('local_ai_status')) ?? [];
+};
+
+/** Probe a user-entered loopback endpoint; resolves to its model list. */
+export const localAiProbe = (baseUrl: string): Promise<LocalAiServer> =>
+  invoke<LocalAiServer>('local_ai_probe', { baseUrl });
+
+/** One bounded, credential-free chat completion on a loopback server. */
+export const petAiChat = (request: PetAiChatRequest): Promise<PetAiChatReply> =>
+  invoke<PetAiChatReply>('pet_ai_chat', { request });
 
 // ---- events ----
 export const onSnapshotUpdated = (h: (s: AppSnapshot) => void) => listen<AppSnapshot>('snapshot-updated', h);

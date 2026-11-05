@@ -40,6 +40,8 @@ test('a fresh pet starts happy, named Mochi, with a clean level', () => {
     xp: 0,
     skin: 'mochi',
     deepseekForm: 'chibi',
+    theme: 'auto',
+    packId: null,
     lastSeen: 1_000,
   });
   expect(pet.sprite).toBeNull();
@@ -170,6 +172,8 @@ test('corrupt state is repaired field by field and never throws', () => {
       energy: Number.NaN,
       skin: 'dragon',
       deepseekForm: 'giant',
+      theme: 'neon',
+      packId: '../escape',
       lastSeen: now + 60_000,
       sprite: { dataUrl: 'javascript:alert(1)' },
     },
@@ -183,6 +187,8 @@ test('corrupt state is repaired field by field and never throws', () => {
   expect(repaired.energy).toBe(70);
   expect(repaired.skin).toBe('mochi');
   expect(repaired.deepseekForm).toBe('chibi');
+  expect(repaired.theme).toBe('auto');
+  expect(repaired.packId).toBeNull();
   expect(repaired.lastSeen).toBe(now);
   expect(repaired.sprite).toBeNull();
   expect(sanitizeName('x'.repeat(60))).toHaveLength(20);
@@ -215,6 +221,8 @@ test('valid state and its stored sprite survive a round trip', () => {
       energy: 77,
       skin: 'deepseek',
       deepseekForm: 'transformed',
+      theme: 'abyss',
+      packId: 'kitty-2',
       lastSeen: now - HOUR,
       sprite,
     },
@@ -229,9 +237,25 @@ test('valid state and its stored sprite survive a round trip', () => {
     energy: 77,
     skin: 'deepseek',
     deepseekForm: 'transformed',
+    theme: 'abyss',
+    packId: 'kitty-2',
     lastSeen: now - HOUR,
     sprite,
   });
+});
+
+test('theme and pack ids accept only known scenes and backend slugs', () => {
+  for (const theme of ['auto', 'matcha', 'abyss', 'aquarium'] as const) {
+    expect(parsePetState({ theme }, 0).theme).toBe(theme);
+  }
+  for (const theme of ['neon', 'MATCHA', '', 1, null]) {
+    expect(parsePetState({ theme }, 0).theme).toBe('auto');
+  }
+  expect(parsePetState({ packId: 'kitty' }, 0).packId).toBe('kitty');
+  expect(parsePetState({ packId: ' kitty-2 ' }, 0).packId).toBe('kitty-2');
+  for (const packId of ['../kitty', 'Kitty', 'a b', 'a/b', '', 'x'.repeat(65), 3, null]) {
+    expect(parsePetState({ packId }, 0).packId).toBeNull();
+  }
 });
 
 test('a single portrait and a 4:1 strip are classified; invalid dimensions are rejected', () => {

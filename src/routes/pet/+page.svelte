@@ -21,7 +21,9 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
   import {
+    assetUrl,
     emitWindowEvent,
+    listPetPacks,
     listen,
     onTaskCompleted,
     openDashboard,
@@ -45,6 +47,15 @@
     type PetStatus,
   } from '$lib/pet/pet';
   import Mochi from '$lib/pet/Mochi.svelte';
+  import PackSprite from '$lib/pet/PackSprite.svelte';
+  import {
+    packFramePath,
+    packIdlePose,
+    parsePetPack,
+    type PackMode,
+    type PetPack,
+  } from '$lib/pet/pack';
+  import { resolvePetTheme } from '$lib/pet/themes';
   import {
     PET_POSITION_KEY,
     artForMode,
@@ -97,6 +108,8 @@
   let sleeping = $state(false);
   let pose = $state<'happy' | 'sleep' | null>(null);
   let bubbleKey = $state<string | null>(null);
+  let packs = $state<PetPack[]>([]);
+  let packsLoaded = $state(false);
 
   let lastActiveAt = Date.now();
   let lastActionAt = 0;
@@ -120,12 +133,27 @@
 
   const voice = $derived(petVoice(pet.skin, pet.deepseekForm));
   const situation = $derived(petSituation(snapshot.value, s, pet));
-  const art = $derived(pet.sprite ? null : desktopArt(pet.skin, pet.deepseekForm));
+  const theme = $derived(resolvePetTheme(pet.skin, pet.theme));
+  const selectedPack = $derived(packs.find((entry) => entry.id === pet.packId) ?? null);
+  /** A restored pack id before the folder scan finishes: show neither art yet. */
+  const packPending = $derived(!!pet.packId && !packsLoaded);
+  const art = $derived(
+    pet.sprite || selectedPack || packPending
+      ? null
+      : desktopArt(pet.skin, pet.deepseekForm)
+  );
   const mode = $derived.by((): PetDesktopMode => {
     if (dragging) return 'drag';
     if (sleeping || pose === 'sleep') return 'sleep';
     if (pose === 'happy') return 'happy';
     if (motion.moving || motion.falling) return 'walk';
+    return 'idle';
+  });
+  const packMode = $derived.by((): PackMode => {
+    if (mode === 'drag') return 'drag';
+    if (mode === 'sleep') return 'sleep';
+    if (mode === 'walk') return 'walk';
+    if (mode === 'happy') return 'pat';
     return 'idle';
   });
   const artUrl = $derived(artForMode(art, mode));
@@ -149,6 +177,25 @@
     if (parsed.lastSeen <= pet.lastSeen) return false;
     pet = advancePet(parsed, Date.now()).state;
     return true;
+  }
+
+  async function loadPacks(): Promise<void> {
+    try {
+      packs = (await listPetPacks())
+        .map(parsePetPack)
+        .filter((entry): entry is PetPack => entry !== null)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      // Browser preview has no pack backend; built-in art is the fallback.
+    } finally {
+      packsLoaded = true;
+    }
+  }
+
+  /** The panel may import a pack while this window is open. */
+  function ensurePack(id: string | null | undefined): void {
+    if (!id || packs.some((entry) => entry.id === id)) return;
+    void loadPacks();
   }
 
   function hideBubble(): void {
@@ -410,14 +457,21 @@
   function onStorage(event: StorageEvent): void {
     if (event.key !== `island.plugin.${PET_PLUGIN_ID}` || event.newValue === null) return;
     try {
-      adopt(JSON.parse(event.newValue));
+      const parsed = JSON.parse(event.newValue) as { packId?: unknown } | null;
+      if (adopt(parsed)) {
+        ensurePack(typeof parsed?.packId === 'string' ? parsed.packId : null);
+      }
     } catch {
       // corrupt write: keep the in-memory pet
     }
   }
 
   async function boot(): Promise<void> {
-    const idle = artForMode(art, 'idle');
+    await loadPacks();
+    const pack = packs.find((entry) => entry.id === pet.packId) ?? null;
+    const idle = pack
+      ? assetUrl(packFramePath(pack, packIdlePose(pack).act.frames[0]))
+      : artForMode(art, 'idle');
     if (idle) await decodeImage(idle);
     await tick();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -494,6 +548,7 @@
     void listen<{ state?: PetState; action?: string }>('pet-state', (payload) => {
       if (!payload || typeof payload !== 'object') return;
       adopt(payload.state);
+      ensurePack(payload.state?.packId);
       if (payload.action && isPetAction(payload.action)) {
         lastNotable = null;
       }
@@ -542,6 +597,7 @@
 
 <div
   class="stage"
+  data-pet-theme={theme}
   role="presentation"
   onpointerenter={onEnter}
   onpointerleave={onLeave}
@@ -601,6 +657,7 @@
     </div>
   {/if}
 
+  <div class="pet-aura" aria-hidden="true"></div>
   <div class="pet-shadow" aria-hidden="true"></div>
 
   <button
@@ -614,7 +671,10 @@
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
   >
-    <span class="pet-wrap" style:transform={`scaleX(${facingDir})`}>
+    <span
+      class="pet-wrap"
+      style:transform={selectedPack ? 'none' : `scaleX(${facingDir})`}
+    >
       <span class="pet-figure mode-{mode}" class:falling={motion.falling}>
         {#if pet.sprite}
           {#if pet.sprite.frames === 4}
@@ -626,6 +686,18 @@
           {:else}
             <img class="sprite" src={pet.sprite.dataUrl} alt="" draggable="false" />
           {/if}
+        {:else if packPending}
+          <span class="pack-placeholder" aria-hidden="true"></span>
+        {:else if selectedPack}
+          <span class="pack-art">
+            <PackSprite
+              pack={selectedPack}
+              mode={packMode}
+              fullness={pet.fullness}
+              level={pet.level}
+              direction={facingDir}
+            />
+          </span>
         {:else if artUrl}
           <img
             class="sprite"
@@ -657,10 +729,10 @@
     z-index: 3;
     max-width: 92%;
     padding: 0.4rem 0.6rem;
-    border: 1px solid rgb(255 255 255 / 0.16);
+    border: 1px solid var(--pet-bubble-border, rgb(255 255 255 / 0.16));
     border-radius: 0.75rem;
-    background: rgb(17 19 26 / 0.84);
-    color: #f5f6fa;
+    background: var(--pet-bubble-bg, rgb(17 19 26 / 0.84));
+    color: var(--pet-bubble-text, #f5f6fa);
     font-size: 0.6875rem;
     line-height: 1.4;
     text-align: center;
@@ -686,22 +758,35 @@
     left: 50%;
     width: 8px;
     height: 8px;
-    border-right: 1px solid rgb(255 255 255 / 0.16);
-    border-bottom: 1px solid rgb(255 255 255 / 0.16);
-    background: rgb(17 19 26 / 0.84);
+    border-right: 1px solid var(--pet-bubble-border, rgb(255 255 255 / 0.16));
+    border-bottom: 1px solid var(--pet-bubble-border, rgb(255 255 255 / 0.16));
+    background: var(--pet-bubble-bg, rgb(17 19 26 / 0.84));
     transform: translateX(-50%) rotate(45deg);
     content: '';
   }
 
   :global(html[data-theme='light']) .bubble {
-    border-color: rgb(0 0 0 / 0.12);
-    background: rgb(255 255 255 / 0.92);
-    color: #1d2027;
+    border-color: var(--pet-bubble-border, rgb(0 0 0 / 0.12));
+    background: var(--pet-bubble-bg, rgb(255 255 255 / 0.92));
+    color: var(--pet-bubble-text, #1d2027);
   }
 
   :global(html[data-theme='light']) .bubble::after {
-    border-color: rgb(0 0 0 / 0.12);
-    background: rgb(255 255 255 / 0.92);
+    border-color: var(--pet-bubble-border, rgb(0 0 0 / 0.12));
+    background: var(--pet-bubble-bg, rgb(255 255 255 / 0.92));
+  }
+
+  .pet-aura {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    z-index: 0;
+    width: 17rem;
+    max-width: 96vw;
+    height: 13rem;
+    background: radial-gradient(ellipse at 50% 82%, var(--pet-glow, transparent), transparent 68%);
+    transform: translateX(-50%);
+    pointer-events: none;
   }
 
   .pet-shadow {
@@ -713,7 +798,7 @@
     max-width: 70vw;
     height: 0.75rem;
     border-radius: 50%;
-    background: radial-gradient(ellipse at center, rgb(0 0 0 / 0.3), transparent 70%);
+    background: radial-gradient(ellipse at center, var(--pet-shadow, rgb(0 0 0 / 0.3)), transparent 70%);
     transform: translateX(-50%);
     pointer-events: none;
   }
@@ -812,6 +897,25 @@
     justify-content: center;
     width: 88%;
     height: 88%;
+    pointer-events: none;
+  }
+
+  .pack-art {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .pack-placeholder {
+    width: 7rem;
+    height: 7rem;
+    margin-bottom: 0.6rem;
+    border-radius: 50%;
+    background: var(--surface-2, rgb(255 255 255 / 0.12));
+    opacity: 0.35;
     pointer-events: none;
   }
 

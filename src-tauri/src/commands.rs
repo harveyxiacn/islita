@@ -20,12 +20,16 @@ pub mod dropbox;
 pub mod forecast;
 #[path = "ingest/mod.rs"]
 pub mod ingest;
+#[path = "local_ai.rs"]
+pub mod local_ai;
 #[path = "mail.rs"]
 pub mod mail;
 #[path = "music.rs"]
 pub mod music;
 #[path = "onboarding.rs"]
 pub mod onboarding;
+#[path = "pet_pack.rs"]
+pub mod pet_pack;
 #[path = "pricing.rs"]
 pub mod pricing;
 #[path = "providers/mod.rs"]

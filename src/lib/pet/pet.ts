@@ -17,6 +17,13 @@ export const PET_DEFAULT_SKIN: PetSkin = 'mochi';
 export const DEEPSEEK_FORMS = ['chibi', 'transformed'] as const;
 export type DeepSeekForm = (typeof DEEPSEEK_FORMS)[number];
 export const PET_DEFAULT_DEEPSEEK_FORM: DeepSeekForm = 'chibi';
+/** Selectable scene themes; `auto` follows the selected bundled skin. */
+export const PET_THEMES = ['auto', 'matcha', 'abyss', 'aquarium'] as const;
+export type PetTheme = (typeof PET_THEMES)[number];
+export const PET_DEFAULT_THEME: PetTheme = 'auto';
+/** Longest accepted imported-pack id; backend ids are ASCII slugs. */
+export const PET_PACK_ID_MAX = 64;
+const PACK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export const PET_STAT_MAX = 100;
 export const MAX_LEVEL = 99;
 export const XP_BASE = 80;
@@ -41,6 +48,10 @@ export interface PetState {
   skin: PetSkin;
   /** DeepSeek only: which of the two supplied forms is drawn. */
   deepseekForm: DeepSeekForm;
+  /** Scene theme; `auto` follows the skin. */
+  theme: PetTheme;
+  /** Selected imported DyberPet pack, or null for the bundled art. */
+  packId: string | null;
   /** Epoch ms of the last simulation/persistence update. */
   lastSeen: number;
   sprite: PetSprite | null;
@@ -83,6 +94,17 @@ export function isDeepSeekForm(raw: unknown): raw is DeepSeekForm {
   return typeof raw === 'string' && (DEEPSEEK_FORMS as readonly string[]).includes(raw);
 }
 
+export function isPetTheme(raw: unknown): raw is PetTheme {
+  return typeof raw === 'string' && (PET_THEMES as readonly string[]).includes(raw);
+}
+
+/** Backend pack ids are ASCII slugs; anything else is treated as absent. */
+export function sanitizePackId(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const id = raw.trim();
+  return id.length <= PET_PACK_ID_MAX && PACK_ID.test(id) ? id : null;
+}
+
 export function xpForNextLevel(level: number): number {
   const safe = clamp(Math.trunc(level), 1, MAX_LEVEL);
   return XP_BASE + (safe - 1) * XP_STEP;
@@ -122,6 +144,8 @@ export function createDefaultPet(now = Date.now(), skin: PetSkin = PET_DEFAULT_S
     energy: 70,
     skin: isPetSkin(skin) ? skin : PET_DEFAULT_SKIN,
     deepseekForm: PET_DEFAULT_DEEPSEEK_FORM,
+    theme: PET_DEFAULT_THEME,
+    packId: null,
     lastSeen: now,
     sprite: null,
   };
@@ -162,6 +186,8 @@ export function parsePetState(raw: unknown, now = Date.now()): PetState {
     energy: stat('energy'),
     skin: isPetSkin(value.skin) ? value.skin : base.skin,
     deepseekForm: isDeepSeekForm(value.deepseekForm) ? value.deepseekForm : base.deepseekForm,
+    theme: isPetTheme(value.theme) ? value.theme : base.theme,
+    packId: sanitizePackId(value.packId),
     lastSeen,
     sprite: parseStoredSprite(value.sprite),
   };

@@ -1584,8 +1584,13 @@
   .island-panel {
     width: max-content;
     max-width: calc(100vw - 1.5rem);
+    /* The capsule sits near the top edge; keep the rest of the panel usable
+       when a plugin (the pet's assistant) grows taller than the monitor. */
+    max-height: calc(100vh - 4.75rem);
     padding: 0.55rem 0.7rem;
     border-radius: calc(var(--r-pill) + 2px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     transform-origin: 50% 0;
     animation: island-panel-in 420ms cubic-bezier(0.2, 1.35, 0.35, 1);
   }

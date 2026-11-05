@@ -1,0 +1,48 @@
+/* Pet scene themes. [FRONTEND]
+ *
+ * Only the pet panel and the detached pet window opt into these tokens, by
+ * stamping `data-pet-theme` on their scene/stage. The rest of the island keeps
+ * the normal theme palette. The scenes themselves live in PetScene.svelte.
+ */
+
+[data-pet-theme='matcha'] {
+  --pet-accent: #6f8f52;
+  --pet-accent-2: #e2a84f;
+  --pet-scene-text: #33402a;
+  --pet-scene-muted: #6b7a5e;
+  --pet-scene-border: rgb(90 112 70 / 0.22);
+  --pet-bubble-bg: rgb(255 252 243 / 0.94);
+  --pet-bubble-border: rgb(90 112 70 / 0.22);
+  --pet-bubble-text: #33402a;
+  --pet-glow: rgb(232 180 93 / 0.3);
+  --pet-shadow: rgb(60 74 45 / 0.26);
+  --pet-swatch: linear-gradient(135deg, #fbf7ea 0%, #dfe8cf 55%, #8fae7a 100%);
+}
+
+[data-pet-theme='abyss'] {
+  --pet-accent: #3fd8e6;
+  --pet-accent-2: #ff8a5c;
+  --pet-scene-text: #dff8ff;
+  --pet-scene-muted: #8fc7d8;
+  --pet-scene-border: rgb(63 216 230 / 0.26);
+  --pet-bubble-bg: rgb(9 30 42 / 0.94);
+  --pet-bubble-border: rgb(63 216 230 / 0.3);
+  --pet-bubble-text: #e8fbff;
+  --pet-glow: rgb(63 216 230 / 0.32);
+  --pet-shadow: rgb(0 10 18 / 0.48);
+  --pet-swatch: linear-gradient(135deg, #123a4f 0%, #0a2233 55%, #3fd8e6 100%);
+}
+
+[data-pet-theme='aquarium'] {
+  --pet-accent: #f2795c;
+  --pet-accent-2: #2e93b5;
+  --pet-scene-text: #173f4e;
+  --pet-scene-muted: #4f7d8d;
+  --pet-scene-border: rgb(46 147 181 / 0.22);
+  --pet-bubble-bg: rgb(248 253 255 / 0.94);
+  --pet-bubble-border: rgb(46 147 181 / 0.24);
+  --pet-bubble-text: #173f4e;
+  --pet-glow: rgb(242 121 92 / 0.26);
+  --pet-shadow: rgb(23 63 78 / 0.24);
+  --pet-swatch: linear-gradient(135deg, #effcff 0%, #c9eef6 55%, #f2795c 100%);
+}
