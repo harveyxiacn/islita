@@ -209,6 +209,18 @@ pub fn sidebar_rect(
     let thickness = settings.collapsed_width as f64;
     let offset = settings.vertical_offset as f64;
 
+    // The dynamic island ignores the docked edge entirely: it floats at the
+    // top centre, keeps the content's size in both states (a collapsed handle
+    // is an edge-bar idea) and grows downwards when a plugin panel opens.
+    if settings.island {
+        let margin = settings.island_margin as f64;
+        let available_w = (m.w - 2.0 * margin).max(1.0);
+        let width = content_w.max(1.0).min(available_w);
+        let height = content_h.max(1.0).min((m.h - margin).max(1.0));
+        let x = m.x + margin + (available_w - width) / 2.0;
+        return LogicalRect::new(x, m.y + margin, width, height);
+    }
+
     if settings.edge.is_horizontal() {
         let height = if expanded { content_h } else { thickness };
         let height = height.max(1.0).min(m.h);
@@ -323,6 +335,70 @@ mod tests {
         assert_eq!(sidebar_rect(&mon(), &s, 76.0, 160.0, true).x, 0.0);
         s.collapsed_width = 8;
         assert_eq!(sidebar_rect(&mon(), &s, 76.0, 160.0, false).x, 0.0);
+    }
+
+    #[test]
+    fn island_floats_at_the_top_centre_with_its_margin() {
+        let mut s = settings();
+        s.island = true;
+        s.island_margin = 12;
+        let r = sidebar_rect(&mon(), &s, 320.0, 76.0, true);
+        assert_eq!(r.y, 12.0);
+        assert_eq!(r.h, 76.0);
+        assert_eq!(r.w, 320.0);
+        // centred inside the margin box (2560 - 2 × 12 wide)
+        assert_eq!(r.x, 12.0 + (2536.0 - 320.0) / 2.0);
+        assert_eq!(r.center_x(), 1280.0);
+    }
+
+    #[test]
+    fn island_ignores_the_collapsed_edge_handle() {
+        let mut s = settings();
+        s.island = true;
+        s.collapsed_width = 6;
+        for expanded in [true, false] {
+            let r = sidebar_rect(&mon(), &s, 320.0, 76.0, expanded);
+            assert_eq!((r.w, r.h), (320.0, 76.0), "the capsule keeps its size");
+            assert_eq!(r.y, 12.0);
+        }
+    }
+
+    #[test]
+    fn island_geometry_ignores_edge_align_and_offset() {
+        let mut s = settings();
+        s.island = true;
+        s.edge = Edge::Bottom;
+        s.vertical_align = VerticalAlign::Bottom;
+        s.vertical_offset = 400;
+        let r = sidebar_rect(&mon(), &s, 320.0, 76.0, true);
+        assert_eq!(r.y, 12.0);
+        assert_eq!(r.center_x(), 1280.0);
+    }
+
+    #[test]
+    fn island_is_capped_to_the_work_area() {
+        let m = MonitorRect::new("small", 0.0, 0.0, 400.0, 300.0, 1.0);
+        let mut s = settings();
+        s.island = true;
+        s.island_margin = 12;
+        let r = sidebar_rect(&m, &s, 900.0, 900.0, true);
+        assert_eq!(r.x, 12.0);
+        assert_eq!(r.w, 376.0);
+        assert_eq!(r.y, 12.0);
+        assert_eq!(r.h, 288.0);
+        assert!(r.right() <= 400.0 && r.bottom() <= 300.0);
+    }
+
+    #[test]
+    fn island_popover_opens_below_the_capsule() {
+        let m = mon();
+        let mut s = settings();
+        s.island = true;
+        let sb = sidebar_rect(&m, &s, 320.0, 76.0, true);
+        // The popover call site substitutes Edge::Top when island is on.
+        let p = popover_rect(&m, &sb, 340.0, 220.0, 120.0, 10.0, Edge::Top);
+        assert_eq!(p.y, sb.bottom() + 10.0);
+        assert_eq!(p.x + 340.0 / 2.0, sb.x + 120.0);
     }
 
     #[test]

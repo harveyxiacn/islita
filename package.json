@@ -1,7 +1,7 @@
 {
-  "name": "ai-usage-sidebar",
-  "version": "0.6.0",
-  "description": "Always-on-top edge sidebar showing Claude Code / Codex rate-limit quotas and token usage history",
+  "name": "islita",
+  "version": "0.7.0",
+  "description": "Plugin island for the desktop: Claude Code / Codex quotas, mail, calendar, notes, file drop, music and tasks",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
@@ -37,6 +37,6 @@
   "packageManager": "pnpm@11.26.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/harveyxiacn/AI-usage-monitor-sidebar"
+    "url": "https://github.com/harveyxiacn/islita"
   }
 }

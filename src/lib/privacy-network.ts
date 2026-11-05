@@ -16,6 +16,8 @@ export type PrivacyItemId =
   | 'codex'
   | 'copilot'
   | 'openrouter'
+  | 'opencode'
+  | 'cloudMail'
   | 'update'
   | 'pricing'
   | 'assessment'
@@ -39,6 +41,8 @@ export const PRIVACY_ITEMS: readonly PrivacyItem[] = [
   { id: 'codex', kind: 'request', setting: 'providers', provider: 'codex' },
   { id: 'copilot', kind: 'request', setting: 'providers', provider: 'copilot' },
   { id: 'openrouter', kind: 'request', setting: 'providers', provider: 'openrouter' },
+  { id: 'opencode', kind: 'request', setting: 'providers', provider: 'opencode' },
+  { id: 'cloudMail', kind: 'request', setting: null },
   { id: 'update', kind: 'request', setting: 'autoUpdateCheck' },
   { id: 'pricing', kind: 'request', setting: 'autoPricingCheck' },
   { id: 'assessment', kind: 'request', setting: null },

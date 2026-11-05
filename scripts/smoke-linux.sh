@@ -2,7 +2,7 @@
 # Start-up smoke test: launch the real binary on a throw-away X display and
 # wait for the log line that says the sidebar is on screen.
 #
-#   scripts/smoke-linux.sh [path/to/ai-usage-sidebar]
+#   scripts/smoke-linux.sh [path/to/islita]
 #
 # This is the one check that catches a start-up panic, a missing runtime
 # library or a window that never gets revealed — none of which unit tests or
@@ -14,10 +14,10 @@
 #   SMOKE_TIMEOUT   seconds to wait for the log line (default 60)
 set -euo pipefail
 
-APP_ID="io.github.harveyxiacn.ai-usage-sidebar"
+APP_ID="io.github.harveyxiacn.islita"
 MARKER="sidebar revealed"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BINARY="${1:-$ROOT/src-tauri/target/release/ai-usage-sidebar}"
+BINARY="${1:-$ROOT/src-tauri/target/release/islita}"
 TIMEOUT="${SMOKE_TIMEOUT:-60}"
 
 [[ -x "$BINARY" ]] || { echo "No executable at $BINARY" >&2; exit 1; }
@@ -51,7 +51,7 @@ mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$HOME"
 
 # WebKitGTK's DMABUF renderer paints black or crashes on virtual/NVIDIA GPUs.
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
-export AI_USAGE_SIDEBAR_LOG=debug
+export ISLITA_LOG=debug
 export GDK_BACKEND=x11
 
 LOG_DIR="$XDG_DATA_HOME/$APP_ID/logs"

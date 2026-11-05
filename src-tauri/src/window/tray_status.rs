@@ -245,10 +245,10 @@ pub fn tooltip(
 ) -> String {
     let mut text = match busiest {
         Some((name, label, used)) => format!(
-            "AI Usage Sidebar\n{name} · {label} {}",
+            "Islita\n{name} · {label} {}",
             shown_percent(*used, settings.percent_mode, chinese)
         ),
-        None => "AI Usage Sidebar".to_string(),
+        None => "Islita".to_string(),
     };
     if focus_on {
         text.push_str(if chinese {

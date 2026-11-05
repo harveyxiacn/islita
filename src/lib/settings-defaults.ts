@@ -12,6 +12,7 @@ export const defaultColors: ColorSettings = {
   codex: '#10a37f',
   copilot: '#8250df',
   openrouter: '#6467f2',
+  opencode: '#0ea5e9',
   warn: '#f5c542',
   critical: '#ff3b30',
   surface: '',
@@ -39,6 +40,10 @@ export const defaultSettings: Settings = {
   verticalAlign: 'center',
   verticalOffset: 0,
   monitor: null,
+  /** float as a rounded capsule at the top centre instead of docking to an edge */
+  island: false,
+  /** gap between the island and the top of the work area, px */
+  islandMargin: 12,
   autoHide: false,
   autoHideDelayMs: 800,
   popoverTimeoutSec: 10,
@@ -60,12 +65,15 @@ export const defaultSettings: Settings = {
     // experimental: off until its credentials are found (providers::enabled_by_default)
     copilot: { enabled: false, showInSidebar: true, order: 2 },
     openrouter: { enabled: false, showInSidebar: true, order: 3 },
+    // experimental: off until the user saves an OpenCode key / opts in
+    opencode: { enabled: false, showInSidebar: true, order: 4 },
   },
   accounts: [],
   ingestEnabled: true,
   pricingUrl: '',
   monthlyBudgetUsd: 0,
   openrouterKeyEnv: 'OPENROUTER_API_KEY',
+  opencodeWorkspaceId: '',
   subscriptionUsd: { claude: 0, codex: 0 },
   quotaRetentionDays: 365,
   autostart: false,
@@ -81,6 +89,7 @@ export const defaultSettings: Settings = {
   notifications: false,
   forecastNotifications: true,
   thresholdNotifications: true,
+  taskNotifications: true,
   budgetNotifications: true,
   weeklySummary: false,
   webhook: { enabled: false, url: '', kind: 'generic' },

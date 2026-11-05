@@ -207,6 +207,7 @@ export interface ColorSettings {
   codex: string;
   copilot: string;
   openrouter: string;
+  opencode: string;
   warn: string;
   critical: string;
   /** tint of the glass / solid surface, alpha comes from `opacity` */
@@ -254,6 +255,14 @@ export interface Settings {
   verticalOffset: number;
   /** monitor name, null = primary */
   monitor: string | null;
+  /**
+   * Float as a rounded capsule at the top centre of the target monitor instead
+   * of docking flush with `edge`. `edge`, `verticalAlign` and `verticalOffset`
+   * are then ignored; the island also grows downwards for plugin panels.
+   */
+  island: boolean;
+  /** Gap between the island and the top of the monitor's work area, px. */
+  islandMargin: number;
   autoHide: boolean;
   autoHideDelayMs: number;
   /** close the popover after this many seconds without pointer activity; 0 = never */
@@ -289,6 +298,8 @@ export interface Settings {
   monthlyBudgetUsd: number;
   /** NAME of the environment variable holding the OpenRouter key; never the key */
   openrouterKeyEnv: string;
+  /** OpenCode Console workspace id or URL; optional, only used as a request header. */
+  opencodeWorkspaceId: string;
   /** Monthly subscription price per provider in USD (0 = unknown); only compared with the API-equivalent estimate. */
   subscriptionUsd: Record<string, number>;
   /** Delete quota history older than this many days; 0 = keep forever. Token usage is never deleted. */
@@ -314,6 +325,8 @@ export interface Settings {
   forecastNotifications: boolean;
   /** warn when a window crosses `thresholds.warn` / `thresholds.critical` (needs `notifications`) */
   thresholdNotifications: boolean;
+  /** notify when a Claude Code / Codex turn finishes (needs `notifications` and log ingestion) */
+  taskNotifications: boolean;
   /** warn when the month-to-date estimated cost reaches 80 % / 100 % of `monthlyBudgetUsd` (needs `notifications`) */
   budgetNotifications: boolean;
   /** Monday ~09:00 local: one notification summarising last week (needs `notifications`) */
@@ -516,6 +529,14 @@ export interface ProviderInfo {
   experimental: boolean;
 }
 
+/** Whether an OpenCode key is available, and where it comes from. */
+export interface OpenCodeKeyStatus {
+  /** a key is stored in the app's OS-keychain entry */
+  saved: boolean;
+  /** OPENCODE_API_KEY is set in the app's environment */
+  fromEnv: boolean;
+}
+
 export interface PricingEntry {
   /** model name prefix, longest match wins */
   modelPattern: string;
@@ -679,6 +700,110 @@ export interface ProviderSetup {
 export interface ShortcutStatus {
   toggleSidebar: string | null;
   openDashboard: string | null;
+}
+
+// ---------- file drop station ----------
+
+/** A file copied into the local dropbox; no path outside the app is exposed. */
+export interface DroppedFile {
+  name: string;
+  size: number;
+  savedAt: number;
+  /** Path relative to the dropbox root, with `/` separators. */
+  relative: string;
+}
+
+export interface DropOutcome {
+  saved: DroppedFile[];
+  /** Basenames with a short reason, never a full source path. */
+  skipped: string[];
+}
+
+// ---------- local mail ----------
+
+/** Headers of one local `.eml` / Maildir message; never a body. */
+export interface MailMessage {
+  id: string;
+  subject: string;
+  from: string;
+  dateMs: number;
+  unread: boolean;
+}
+
+export interface MailScan {
+  folder: string;
+  messages: MailMessage[];
+  total: number;
+  unread: number;
+  truncated: boolean;
+}
+
+// ---------- Cloud mail (opt-in accounts) ----------
+
+export type CloudMailProvider = 'gmail' | 'outlook' | 'imap';
+export type CloudMailMode = 'oauth' | 'password';
+
+/** Metadata only. Passwords and OAuth tokens live in the OS keychain. */
+export interface CloudMailAccount {
+  id: string;
+  provider: CloudMailProvider;
+  mode: CloudMailMode;
+  email: string;
+  displayName: string;
+  label: string;
+  server: string;
+  port: number;
+  username: string;
+  starttls: boolean;
+  enabled: boolean;
+  createdAtMs: number;
+  lastCheckMs: number;
+  lastError: string;
+  clientId: string;
+  accessExpiresAtMs: number;
+}
+
+export interface CloudMailScan {
+  account: CloudMailAccount;
+  messages: MailMessage[];
+  unread: number;
+  total: number;
+  truncated: boolean;
+  checkedAtMs: number;
+}
+
+export interface CloudMailPasswordRequest {
+  provider: CloudMailProvider;
+  email: string;
+  password: string;
+  displayName?: string;
+  label?: string;
+  server?: string;
+  port?: number;
+  username?: string;
+  starttls?: boolean;
+}
+
+// ---------- WeChat conversation mirror ----------
+
+/** Why the conversation list is (not) available. */
+export type WechatState = 'ok' | 'not_running' | 'no_sessions' | 'blocked' | 'unsupported';
+
+/** The latest message per visible WeChat conversation. */
+export interface WechatSession {
+  id: string;
+  contact: string;
+  preview: string;
+  /** The list's own label (`09:24`, `昨天`, …), not a parsed timestamp. */
+  time: string;
+}
+
+export interface WechatScan {
+  supported: boolean;
+  state: WechatState;
+  sessions: WechatSession[];
+  total: number;
+  readAtMs: number;
 }
 
 // ---------- platform / window ----------

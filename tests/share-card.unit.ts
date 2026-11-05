@@ -74,7 +74,7 @@ function input(overrides: Partial<ShareInput> = {}): ShareInput {
     theme: 'dark',
     labels: {
       title: 'AI usage', thisMonth: 'This month', tokens: 'Tokens', cost: 'Est. cost', estimate: 'estimate',
-      topModel: 'Top model', appName: 'AI Usage Sidebar', costNote: 'estimate only', noData: 'No data',
+      topModel: 'Top model', appName: 'Islita', costNote: 'estimate only', noData: 'No data',
     },
     format: { tokens: (n) => `${n ?? '-'}t`, cost: (n) => (n == null ? '-' : `$${n}`), percent: (u) => `${Math.round(u)}%` },
     ...overrides,
@@ -220,7 +220,7 @@ test('long model names shrink until they fit, but not below the minimum', () => 
 
 test('file names and month bounds use the local calendar', () => {
   const now = new Date(2026, 9, 17, 15).getTime();
-  expect(shareFileName(now)).toBe('ai-usage-2026-10.png');
+  expect(shareFileName(now)).toBe('islita-2026-10.png');
   expect(monthBounds(now)).toEqual({ from: new Date(2026, 9, 1).getTime(), to: new Date(2026, 10, 1).getTime() });
   const dec = new Date(2026, 11, 31, 23).getTime();
   expect(monthBounds(dec).to).toBe(new Date(2027, 0, 1).getTime());

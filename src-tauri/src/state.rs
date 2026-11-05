@@ -167,6 +167,9 @@ pub struct AppState {
     pub backoff: Mutex<HashMap<String, Backoff>>,
     /// Adaptive polling clocks; the log watcher thread holds a clone.
     pub poll_clocks: Arc<Mutex<PollClocks>>,
+    /// High-water mark (unix ms) for task-completion notifications. Starting
+    /// at "now" keeps a first scan of old logs from replaying history.
+    pub task_watch: Mutex<i64>,
 }
 
 impl AppState {
@@ -225,6 +228,7 @@ impl AppState {
             refresh_lock: tokio::sync::Mutex::new(()),
             backoff: Mutex::new(backoff),
             poll_clocks: Arc::new(Mutex::new(poll_clocks)),
+            task_watch: Mutex::new(crate::commands::store::now_ms()),
         }
     }
 

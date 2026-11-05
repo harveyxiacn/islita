@@ -27,13 +27,13 @@
   });
 
   const examples = $derived([
-    { id: 'line', label: t('integrations.example.line'), text: 'ai-usage-sidebar --print' },
-    { id: 'statusline', label: t('integrations.example.statusline'), text: 'ai-usage-sidebar --print --format statusline' },
-    { id: 'json', label: t('integrations.example.json'), text: 'ai-usage-sidebar --print --format json --provider claude' },
+    { id: 'line', label: t('integrations.example.line'), text: 'islita --print' },
+    { id: 'statusline', label: t('integrations.example.statusline'), text: 'islita --print --format statusline' },
+    { id: 'json', label: t('integrations.example.json'), text: 'islita --print --format json --provider claude' },
     {
       id: 'claude',
       label: t('integrations.example.claudeCode'),
-      text: '{ "statusLine": { "type": "command", "command": "ai-usage-sidebar --print --format statusline" } }',
+      text: '{ "statusLine": { "type": "command", "command": "islita --print --format statusline" } }',
     },
   ]);
 

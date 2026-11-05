@@ -7,6 +7,7 @@
 pub mod claude;
 pub mod codex;
 pub mod copilot;
+pub mod opencode;
 pub mod openrouter;
 
 pub use crate::model::{provider_key, split_key};
@@ -22,6 +23,7 @@ pub const CLAUDE_ID: &str = "claude";
 pub const CODEX_ID: &str = "codex";
 pub const COPILOT_ID: &str = "copilot";
 pub const OPENROUTER_ID: &str = "openrouter";
+pub const OPENCODE_ID: &str = "opencode";
 
 /// Every provider id the app knows, in default display order.
 ///
@@ -29,7 +31,8 @@ pub const OPENROUTER_ID: &str = "openrouter";
 /// one `ProviderSettings` entry per id and `settings::clamp` back-fills them
 /// into an older `settings.json`, so adding a provider to `all_providers`
 /// means adding it here and nowhere else.
-pub const DEFAULT_PROVIDER_ORDER: &[&str] = &[CLAUDE_ID, CODEX_ID, COPILOT_ID, OPENROUTER_ID];
+pub const DEFAULT_PROVIDER_ORDER: &[&str] =
+    &[CLAUDE_ID, CODEX_ID, COPILOT_ID, OPENROUTER_ID, OPENCODE_ID];
 
 /// Whether a provider is switched on the first time its settings entry is
 /// created (an existing entry always wins — the user's choice is never
@@ -43,7 +46,7 @@ pub fn enabled_by_default(id: &str) -> bool {
     match id {
         COPILOT_ID => copilot::has_credentials(),
         // there is no CLI whose login could be detected: always opt-in
-        OPENROUTER_ID => false,
+        OPENROUTER_ID | OPENCODE_ID => false,
         _ => true,
     }
 }
@@ -64,6 +67,9 @@ pub struct ProviderCtx {
     /// `openrouterKeyEnv` setting; `ordered_providers` fills it in). The key
     /// itself is never part of the context.
     pub openrouter_key_env: String,
+    /// OpenCode Console workspace id (`opencodeWorkspaceId`) or the URL that
+    /// contains it; empty = send the API key without a workspace header.
+    pub opencode_workspace_id: String,
     /// `Some` for an extra account (`settings.accounts`): its credentials come
     /// from that account's config dir and its cache file is separate. `None`
     /// is the primary account (default dir, `CLAUDE_CONFIG_DIR` / `CODEX_HOME`).
@@ -116,6 +122,7 @@ impl Default for ProviderCtx {
             api_base: None,
             retry_delay: RETRY_DELAY,
             openrouter_key_env: openrouter::DEFAULT_KEY_ENV.to_string(),
+            opencode_workspace_id: String::new(),
             account: None,
         }
     }
@@ -186,7 +193,7 @@ pub async fn send_with_retry(
 }
 
 pub fn default_user_agent() -> String {
-    format!("ai-usage-sidebar/{}", env!("CARGO_PKG_VERSION"))
+    format!("islita/{}", env!("CARGO_PKG_VERSION"))
 }
 
 /// One quota source (Claude Code, Codex, …).
@@ -220,6 +227,7 @@ pub fn all_providers(ctx: &ProviderCtx) -> Vec<Box<dyn Provider>> {
         Box::new(codex::CodexProvider::new(ctx.clone())),
         Box::new(copilot::CopilotProvider::new(ctx.clone())),
         Box::new(openrouter::OpenRouterProvider::new(ctx.clone())),
+        Box::new(opencode::OpenCodeProvider::new(ctx.clone())),
     ]
 }
 
@@ -484,6 +492,7 @@ pub fn is_enabled(settings: &Settings, id: &str) -> bool {
 pub fn ordered_providers(ctx: &ProviderCtx, settings: &Settings) -> Vec<Box<dyn Provider>> {
     let mut ctx = ctx.clone();
     ctx.openrouter_key_env = settings.openrouter_key_env.clone();
+    ctx.opencode_workspace_id = settings.opencode_workspace_id.clone();
     let mut list = all_providers(&ctx);
     list.sort_by_key(|p| {
         settings

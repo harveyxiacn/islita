@@ -15,10 +15,15 @@ import type {
   CalendarQuery,
   CalendarResult,
   CalendarSlot,
+  CloudMailAccount,
+  CloudMailPasswordRequest,
+  CloudMailProvider,
+  CloudMailScan,
   HistoryQuery,
   HistoryResult,
   HistoryRow,
   IngestStats,
+  MailScan,
   MonitorInfo,
   PricingEntry,
   PricingTable,
@@ -36,11 +41,14 @@ import type {
   ShortcutRegistrations,
   ShortcutStatus,
   Diagnostics,
+  DropOutcome,
+  DroppedFile,
   ImportResult,
   SettingsVersion,
   TokenTotals,
   UpdateStatus,
   WeeklySummary,
+  WechatScan,
   WindowUsageQuery,
 } from './types';
 import { localDateInput } from './history';
@@ -49,10 +57,68 @@ import { quotaKey } from './providers';
 import { shortcutProblem } from './shortcuts';
 
 const now = Date.now();
+
+/** In-memory stand-in for the Tauri dropbox (browser preview only). */
+const mockDropbox: DroppedFile[] = [];
+
 const iso = (ms: number) => new Date(ms).toISOString();
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
+/** Sample headers for the browser preview of the local-mail panel. */
+const mockMail: MailScan = {
+  folder: '~/Mail/Inbox',
+  total: 3,
+  unread: 2,
+  truncated: false,
+  messages: [
+    { id: 'new/1.msg', subject: 'Design review moved to 3 pm', from: 'Maya Chen <maya@example.com>', dateMs: now - 18 * 60_000, unread: true },
+    { id: 'new/2.msg', subject: 'Invoice for October', from: 'Billing <billing@example.com>', dateMs: now - 2 * HOUR, unread: true },
+    { id: 'cur/3.msg:2,S', subject: 'Weekly notes', from: 'Sam <sam@example.com>', dateMs: now - DAY, unread: false },
+  ],
+};
+
+/** Sample conversation-list mirror for the browser preview. */
+const mockWechat: WechatScan = {
+  supported: true,
+  state: 'ok',
+  total: 4,
+  readAtMs: now,
+  sessions: [
+    { id: 'session_item_Maya', contact: 'Maya', preview: 'Design review moved to 3 pm', time: '09:24' },
+    { id: 'session_item_Design team', contact: 'Design team', preview: 'Sam: shipped the build', time: 'Yesterday' },
+    { id: 'session_item_Ops', contact: 'Ops', preview: '[图片]', time: '昨天' },
+    { id: 'session_item_File Transfer', contact: 'File Transfer', preview: 'notes.txt', time: '11/4' },
+  ],
+};
+
+/** Browser-preview stand-in for cloud mail accounts; secrets never enter it. */
+let mockCloudAccounts: CloudMailAccount[] = [
+  {
+    id: 'mail-mock-gmail',
+    provider: 'gmail',
+    mode: 'oauth',
+    email: 'maya@example.com',
+    displayName: 'Maya Chen',
+    label: 'Maya Chen',
+    server: 'imap.gmail.com',
+    port: 993,
+    username: 'maya@example.com',
+    starttls: false,
+    enabled: true,
+    createdAtMs: now - 30 * DAY,
+    lastCheckMs: now,
+    lastError: '',
+    clientId: 'mock-gmail-client',
+    accessExpiresAtMs: now + HOUR,
+  },
+];
+
+const mockCloudMessages = [
+  { id: 'gmail-18c1', subject: 'Design review moved to 3 pm', from: 'Maya Chen <maya@example.com>', dateMs: now - 18 * 60_000, unread: true },
+  { id: 'gmail-18c2', subject: 'Your invoice for October', from: 'Billing <billing@example.com>', dateMs: now - 2 * HOUR, unread: true },
+  { id: 'gmail-18c3', subject: 'Welcome to the team', from: 'People Ops <people@example.com>', dateMs: now - DAY, unread: true },
+];
 // --------------------------------------------------------------- snapshot ---
 
 export const mockSnapshot: AppSnapshot = {
@@ -123,6 +189,8 @@ export const mockSettings: Settings = {
   verticalAlign: 'center',
   verticalOffset: 0,
   monitor: null,
+  island: false,
+  islandMargin: 12,
   autoHide: false,
   autoHideDelayMs: 800,
   popoverTimeoutSec: 10,
@@ -145,12 +213,14 @@ export const mockSettings: Settings = {
     // providers::enabled_by_default), which the browser preview mirrors.
     copilot: { enabled: false, showInSidebar: true, order: 2 },
     openrouter: { enabled: false, showInSidebar: true, order: 3 },
+    opencode: { enabled: false, showInSidebar: true, order: 4 },
   },
   accounts: [],
   ingestEnabled: true,
   pricingUrl: '',
   monthlyBudgetUsd: 0,
   openrouterKeyEnv: 'OPENROUTER_API_KEY',
+  opencodeWorkspaceId: '',
   subscriptionUsd: { claude: 0, codex: 0 },
   quotaRetentionDays: 365,
   autostart: false,
@@ -161,11 +231,12 @@ export const mockSettings: Settings = {
   opacity: 1,
   scale: 1,
   thresholds: { warn: 70, critical: 90 },
-  colors: { claude: '#ff5c1a', codex: '#10a37f', copilot: '#8250df', openrouter: '#6467f2', warn: '#f5c542', critical: '#ff3b30', surface: '', text: '' },
+  colors: { claude: '#ff5c1a', codex: '#10a37f', copilot: '#8250df', openrouter: '#6467f2', opencode: '#0ea5e9', warn: '#f5c542', critical: '#ff3b30', surface: '', text: '' },
   sizes: { ringSize: 56, ringStroke: 4.5, barGap: 18, barPadding: 10, cornerRadius: 26, labelSize: 13 },
   notifications: false,
   forecastNotifications: true,
   thresholdNotifications: true,
+  taskNotifications: true,
   budgetNotifications: true,
   weeklySummary: false,
   webhook: { enabled: false, url: '', kind: 'generic' },
@@ -219,6 +290,17 @@ export const mockProviders: ProviderInfo[] = [
     displayName: 'OpenRouter',
     loggedIn: false,
     credentialPath: '$OPENROUTER_API_KEY',
+    logPath: null,
+    planLabel: null,
+    experimental: true,
+  },
+  // OpenCode starts without a key in the browser preview; the Settings card
+  // still has to render its key/workspace fields.
+  {
+    id: 'opencode',
+    displayName: 'OpenCode',
+    loggedIn: false,
+    credentialPath: 'OS keychain or $OPENCODE_API_KEY',
     logPath: null,
     planLabel: null,
     experimental: true,
@@ -288,8 +370,8 @@ export const mockWeeklySummary: WeeklySummary = {
 export const mockAppInfo: AppInfo = {
 
   version: '0.1.0-mock',
-  dataDir: '~/.local/share/ai-usage-sidebar',
-  configDir: '~/.config/ai-usage-sidebar',
+  dataDir: '~/.local/share/io.github.harveyxiacn.islita',
+  configDir: '~/.config/io.github.harveyxiacn.islita',
   platform: 'linux',
   backend: 'browser',
 };
@@ -305,7 +387,7 @@ let updateStatus: UpdateStatus = {
   available: null,
   currentVersion: '0.1.1-mock',
   notes: null,
-  releaseUrl: 'https://github.com/harveyxiacn/AI-usage-monitor-sidebar/releases',
+  releaseUrl: 'https://github.com/harveyxiacn/islita/releases',
   canInstall: false,
   checking: false,
   installing: false,
@@ -898,6 +980,8 @@ function applyScenario(base: AppSnapshot): AppSnapshot {
 }
 
 let settings = seededSettings();
+/** The browser preview keeps the OpenCode key state in memory only. */
+let opencodeKeySaved = false;
 /** Undo ring of the preview (newest first, max 5): the Rust side coalesces slider bursts, this does not need to. */
 let settingsHistory: SettingsVersion[] = [];
 
@@ -951,7 +1035,7 @@ function jitterSnapshot(provider?: ProviderId | null) {
 }
 
 export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (['list_sessions', 'get_session_insights', 'get_session_detail', 'set_session_alias', 'get_analysis_settings', 'save_analysis_settings', 'prepare_session_evaluation', 'evaluate_session', 'get_session_evaluations', 'save_evaluation_review', 'clear_session_analysis'].includes(cmd)) {
+  if (['list_sessions', 'list_task_completions', 'get_session_insights', 'get_session_detail', 'set_session_alias', 'get_analysis_settings', 'save_analysis_settings', 'prepare_session_evaluation', 'evaluate_session', 'get_session_evaluations', 'save_evaluation_review', 'clear_session_analysis'].includes(cmd)) {
     return (await import('./session-mock')).sessionMockInvoke(cmd, args) as Promise<T>;
   }
   switch (cmd) {
@@ -989,10 +1073,10 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const url = URL.createObjectURL(new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'ai-usage-sidebar-settings.json';
+      link.download = 'islita-settings.json';
       document.body.appendChild(link);
       try { link.click(); } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30_000); }
-      return 'ai-usage-sidebar-settings.json' as T;
+      return 'islita-settings.json' as T;
     }
     case 'import_settings': {
       const file = args?.file as File | undefined;
@@ -1028,10 +1112,10 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           fetchedAt: snapshot.generatedAt,
         })),
         settings: structuredClone(settings) as unknown as Record<string, unknown>,
-        logDir: '~/.local/share/ai-usage-sidebar/logs',
+        logDir: '~/.local/share/io.github.harveyxiacn.islita/logs',
         configDir: mockAppInfo.configDir,
         dataDir: mockAppInfo.dataDir,
-        logFile: 'ai-usage-sidebar.log',
+        logFile: 'islita.log',
         logTail: '[INFO] browser preview: no real log',
       };
       return report as T;
@@ -1211,14 +1295,25 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     }
     case 'get_providers':
       return structuredClone(mockProviders) as T;
+    case 'opencode_set_key': {
+      const key = String(args?.key ?? '').trim();
+      if (!key) throw new Error('the OpenCode API key is empty');
+      opencodeKeySaved = true;
+      return undefined as T;
+    }
+    case 'opencode_clear_key':
+      opencodeKeySaved = false;
+      return undefined as T;
+    case 'opencode_key_status':
+      return { saved: opencodeKeySaved, fromEnv: false } as T;
     case 'get_app_info':
       // `?mock=upgraded` pretends to be a build that has bundled release notes.
       return structuredClone(mockScenario() === 'upgraded' ? { ...mockAppInfo, version: '0.5.0' } : mockAppInfo) as T;
     case 'backup_data':
-      return '~/Backups/ai-usage-sidebar-backup-20261002-101500' as T;
+      return '~/Backups/islita-backup-20261002-101500' as T;
     case 'restore_data': {
       const info: BackupInfo = {
-        path: '~/Backups/ai-usage-sidebar-backup-20261002-101500',
+        path: '~/Backups/islita-backup-20261002-101500',
         createdAt: iso(now - 2 * DAY),
         appVersion: '0.6.0',
         schemaVersion: 2,
@@ -1240,6 +1335,115 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case 'open_dashboard':
       mockEmit('dashboard-navigate', { tab: args?.tab ?? 'overview' });
       return undefined as T;
+    case 'save_dropped_files': {
+      const paths = Array.isArray(args?.paths) ? (args.paths as string[]) : [];
+      const saved: DroppedFile[] = [];
+      for (const path of paths.slice(0, 20)) {
+        const name = path.split(/[\\/]/).filter(Boolean).pop() ?? 'file';
+        const existing = mockDropbox.filter((file) => file.name === name).length;
+        const unique = existing === 0 ? name : name.replace(/(\.[^.]+)?$/, ` (${existing + 1})$1`);
+        const file: DroppedFile = {
+          name: unique,
+          size: 0,
+          savedAt: Date.now(),
+          relative: `2026-11-05/${unique}`,
+        };
+        mockDropbox.unshift(file);
+        saved.push(file);
+      }
+      mockDropbox.splice(50);
+      return { saved, skipped: [] } satisfies DropOutcome as T;
+    }
+    case 'pick_dropped_files':
+      return null as T;
+    case 'list_dropped_files':
+      return structuredClone(mockDropbox.slice(0, Number(args?.limit ?? 12))) as T;
+    case 'open_dropbox':
+      return '~/Library/Application Support/io.github.harveyxiacn.islita/dropbox' as T;
+    case 'pick_mail_folder':
+      return '~/Mail/Inbox' as T;
+    case 'scan_mail_folder':
+      return structuredClone(mockMail) as T;
+    case 'mail_cloud_list':
+      return structuredClone(mockCloudAccounts) as T;
+    case 'mail_cloud_add_password': {
+      const request = args?.request as CloudMailPasswordRequest;
+      const email = request.email.trim();
+      if (mockCloudAccounts.some((account) => account.provider === request.provider && account.email.toLowerCase() === email.toLowerCase())) {
+        throw new Error('This mail account is already connected.');
+      }
+      const account: CloudMailAccount = {
+        id: `mail-mock-${mockCloudAccounts.length + 1}`,
+        provider: request.provider,
+        mode: 'password',
+        email,
+        displayName: request.displayName || email,
+        label: request.label || request.displayName || email,
+        server: request.server || (request.provider === 'gmail' ? 'imap.gmail.com' : request.provider === 'outlook' ? 'outlook.office365.com' : 'imap.example.com'),
+        port: request.port ?? 993,
+        username: request.username || email,
+        starttls: request.starttls ?? false,
+        enabled: true,
+        createdAtMs: Date.now(),
+        lastCheckMs: Date.now(),
+        lastError: '',
+        clientId: '',
+        accessExpiresAtMs: 0,
+      };
+      mockCloudAccounts = [...mockCloudAccounts, account];
+      return structuredClone(account) as T;
+    }
+    case 'mail_cloud_oauth_login': {
+      const provider = args?.provider as CloudMailProvider;
+      const email = provider === 'gmail' ? 'you@gmail.com' : 'you@outlook.com';
+      const account: CloudMailAccount = {
+        id: `mail-mock-${mockCloudAccounts.length + 1}`,
+        provider,
+        mode: 'oauth',
+        email,
+        displayName: provider === 'gmail' ? 'Gmail account' : 'Outlook account',
+        label: provider === 'gmail' ? 'Gmail account' : 'Outlook account',
+        server: provider === 'gmail' ? 'imap.gmail.com' : 'outlook.office365.com',
+        port: 993,
+        username: email,
+        starttls: false,
+        enabled: true,
+        createdAtMs: Date.now(),
+        lastCheckMs: 0,
+        lastError: '',
+        clientId: String(args?.clientId ?? ''),
+        accessExpiresAtMs: Date.now() + 3_600_000,
+      };
+      mockCloudAccounts = [...mockCloudAccounts, account];
+      return structuredClone(account) as T;
+    }
+    case 'mail_cloud_oauth_cancel':
+      return undefined as T;
+    case 'mail_cloud_reconnect': {
+      const account = mockCloudAccounts.find((candidate) => candidate.id === args?.id);
+      if (!account) throw new Error('That mail account is not connected.');
+      account.lastError = '';
+      account.accessExpiresAtMs = Date.now() + 3_600_000;
+      return structuredClone(account) as T;
+    }
+    case 'mail_cloud_remove':
+      mockCloudAccounts = mockCloudAccounts.filter((account) => account.id !== args?.id);
+      return undefined as T;
+    case 'mail_cloud_scan': {
+      const account = mockCloudAccounts.find((candidate) => candidate.id === args?.id);
+      if (!account) throw new Error('That mail account is not connected.');
+      const scan: CloudMailScan = {
+        account: structuredClone(account),
+        messages: structuredClone(mockCloudMessages),
+        unread: mockCloudMessages.length,
+        total: mockCloudMessages.length,
+        truncated: false,
+        checkedAtMs: Date.now(),
+      };
+      return scan as T;
+    }
+    case 'read_wechat_sessions':
+      return structuredClone(mockWechat) as T;
     default:
       return undefined as T;
   }

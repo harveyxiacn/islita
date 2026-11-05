@@ -347,6 +347,60 @@ pub(super) const CANDIDATES_CTE: &str = "WITH usage AS (SELECT provider,COALESCE
         LEFT JOIN session_metadata m USING(provider,session_id) LEFT JOIN session_aliases a USING(provider,session_id)),
         filtered AS (SELECT * FROM candidates WHERE ?5='' OR instr(lower(sort_title||' '||session_id||' '||project),lower(?5))>0) ";
 
+/// Finished main-session turns in `(since_ms, until_ms]`, newest first.
+///
+/// Subagent transcripts are skipped: they finish while the parent keeps
+/// working, so they are not something the user needs to be pulled back for.
+pub fn completed_tasks(
+    db: &Db,
+    since_ms: i64,
+    until_ms: i64,
+    limit: u32,
+) -> Result<Vec<TaskCompletion>> {
+    let conn = db.lock();
+    let mut stmt = conn.prepare(
+        "SELECT t.provider,t.session_id,
+         COALESCE(NULLIF(a.alias,''),NULLIF(m.native_title,''),''),
+         COALESCE(m.project,''),t.finished_at
+         FROM session_turns t
+         LEFT JOIN session_metadata m ON m.provider=t.provider AND m.session_id=t.session_id
+         LEFT JOIN session_aliases a ON a.provider=t.provider AND a.session_id=t.session_id
+         WHERE t.finished_at IS NOT NULL AND t.finished_at>?1 AND t.finished_at<=?2
+           AND instr(t.session_id,':agent:')=0
+           AND (t.provider<>'codex' OR m.parent_id IS NULL OR m.parent_id='')
+         ORDER BY t.finished_at DESC LIMIT ?3",
+    )?;
+    let rows = stmt.query_map(
+        params![since_ms, until_ms, i64::from(limit.clamp(1, 200))],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        },
+    )?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (provider, session_id, title, project, finished_at) = row?;
+        let title = if title.trim().is_empty() {
+            fallback_title(&project, &session_id, finished_at)
+        } else {
+            title
+        };
+        out.push(TaskCompletion {
+            provider,
+            session_id,
+            title,
+            project,
+            finished_at,
+        });
+    }
+    Ok(out)
+}
+
 pub fn list(
     db: &Db,
     q: &SessionListQuery,

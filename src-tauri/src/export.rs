@@ -26,7 +26,7 @@ fn suggested_name(name: &str, extension: &str, fallback: &str) -> String {
 }
 
 fn suggested_csv_name(name: &str) -> String {
-    suggested_name(name, "csv", "ai-usage.csv")
+    suggested_name(name, "csv", "islita.csv")
 }
 
 /// A share card is a 1200x630 PNG of well under a megabyte; refuse anything
@@ -88,7 +88,7 @@ pub async fn save_share_card(
             .set_file_name(suggested_name(
                 &suggested_name_hint,
                 "png",
-                "ai-usage-card.png",
+                "islita-card.png",
             ))
             .blocking_save_file()
         else {
@@ -125,8 +125,8 @@ mod tests {
         assert_eq!(suggested_csv_name("/tmp/usage.csv"), "usage.csv");
         assert_eq!(suggested_csv_name("C:\\reports\\usage.CSV"), "usage.CSV");
         assert_eq!(suggested_csv_name("使用量"), "使用量.csv");
-        assert_eq!(suggested_csv_name(""), "ai-usage.csv");
-        assert_eq!(suggested_csv_name("bad\nname.csv"), "ai-usage.csv");
+        assert_eq!(suggested_csv_name(""), "islita.csv");
+        assert_eq!(suggested_csv_name("bad\nname.csv"), "islita.csv");
     }
 
     #[test]

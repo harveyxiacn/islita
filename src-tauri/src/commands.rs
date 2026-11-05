@@ -10,12 +10,18 @@
 pub mod accounts;
 #[path = "alerts/mod.rs"]
 pub mod alerts;
+#[path = "cloud_mail.rs"]
+pub mod cloud_mail;
 #[path = "diagnostics.rs"]
 pub mod diagnostics;
+#[path = "dropbox.rs"]
+pub mod dropbox;
 #[path = "forecast.rs"]
 pub mod forecast;
 #[path = "ingest/mod.rs"]
 pub mod ingest;
+#[path = "mail.rs"]
+pub mod mail;
 #[path = "onboarding.rs"]
 pub mod onboarding;
 #[path = "pricing.rs"]
@@ -30,9 +36,13 @@ pub mod settings_history;
 pub mod settings_io;
 #[path = "store/mod.rs"]
 pub mod store;
+#[path = "tasks.rs"]
+pub mod tasks;
 #[cfg(test)]
 #[path = "test_support.rs"]
 pub mod test_support;
+#[path = "wechat.rs"]
+pub mod wechat;
 
 use crate::model::*;
 use crate::state::AppState;
@@ -166,8 +176,28 @@ pub async fn reingest_logs(app: AppHandle) -> Result<IngestStats, String> {
 
 #[tauri::command]
 pub async fn get_providers(state: State<'_, AppState>) -> Result<Vec<ProviderInfo>, String> {
+    // Read the keychain entry once so the provider list can say whether an
+    // OpenCode key is saved without prompting again on every render.
+    providers::opencode::prime_key_cache().await;
     let settings = state.settings.read().clone();
     Ok(providers::provider_infos(&state.provider_ctx, &settings))
+}
+
+/// Save an OpenCode API key in the OS keychain. The key itself never enters
+/// `settings.json` or a log line.
+#[tauri::command]
+pub async fn opencode_set_key(key: String) -> Result<(), String> {
+    providers::opencode::store_key(&key).await
+}
+
+#[tauri::command]
+pub async fn opencode_clear_key() -> Result<(), String> {
+    providers::opencode::clear_key().await
+}
+
+#[tauri::command]
+pub async fn opencode_key_status() -> Result<providers::opencode::KeyStatus, String> {
+    Ok(providers::opencode::key_status().await)
 }
 
 #[tauri::command]

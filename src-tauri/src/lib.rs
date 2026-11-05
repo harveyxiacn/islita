@@ -18,10 +18,10 @@ pub mod window;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 
-/// Log verbosity, overridable with `AI_USAGE_SIDEBAR_LOG=trace|debug|warn|error`
+/// Log verbosity, overridable with `ISLITA_LOG=trace|debug|warn|error`
 /// (window placement decisions are logged at `debug`).
 fn log_level() -> log::LevelFilter {
-    match std::env::var("AI_USAGE_SIDEBAR_LOG")
+    match std::env::var("ISLITA_LOG")
         .unwrap_or_default()
         .to_ascii_lowercase()
         .as_str()
@@ -92,7 +92,7 @@ pub fn run() {
             commands::settings::watch(app.handle().clone());
 
             #[cfg(debug_assertions)]
-            if std::env::var("AI_USAGE_SIDEBAR_DEVTOOLS").as_deref() == Ok("1") {
+            if std::env::var("ISLITA_DEVTOOLS").as_deref() == Ok("1") {
                 for label in [model::windows::DASHBOARD, model::windows::SIDEBAR] {
                     if let Some(win) = app.get_webview_window(label) {
                         win.open_devtools();
@@ -106,6 +106,7 @@ pub fn run() {
             sessions::get_session_insights,
             sessions::get_session_detail,
             sessions::set_session_alias,
+            commands::tasks::list_task_completions,
             evaluation::get_analysis_settings,
             evaluation::save_analysis_settings,
             evaluation::prepare_session_evaluation,
@@ -132,9 +133,26 @@ pub fn run() {
             commands::use_source_pricing,
             commands::reingest_logs,
             commands::get_providers,
+            commands::opencode_set_key,
+            commands::opencode_clear_key,
+            commands::opencode_key_status,
             commands::get_app_info,
             commands::diagnostics::get_diagnostics,
             commands::diagnostics::open_folder,
+            commands::dropbox::save_dropped_files,
+            commands::dropbox::pick_dropped_files,
+            commands::dropbox::list_dropped_files,
+            commands::dropbox::open_dropbox,
+            commands::mail::pick_mail_folder,
+            commands::mail::scan_mail_folder,
+            commands::cloud_mail::mail_cloud_list,
+            commands::cloud_mail::mail_cloud_add_password,
+            commands::cloud_mail::mail_cloud_oauth_login,
+            commands::cloud_mail::mail_cloud_oauth_cancel,
+            commands::cloud_mail::mail_cloud_reconnect,
+            commands::cloud_mail::mail_cloud_remove,
+            commands::cloud_mail::mail_cloud_scan,
+            commands::wechat::read_wechat_sessions,
             commands::settings_io::export_settings,
             commands::settings_io::import_settings,
             commands::settings_io::get_settings_history,

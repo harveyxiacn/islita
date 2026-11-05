@@ -12,7 +12,7 @@
   import { t } from '$lib/i18n/i18n.svelte';
   import type { AppInfo } from '$lib/types';
 
-  const GITHUB_URL = 'https://github.com/harveyxiacn/AI-usage-monitor-sidebar';
+  const GITHUB_URL = 'https://github.com/harveyxiacn/islita';
 
   let appInfo = $state<AppInfo | null>(null);
   let logDir = $state<string | null>(null);

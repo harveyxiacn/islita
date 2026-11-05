@@ -1,5 +1,5 @@
 //! `snapshot.json`: a small, versioned, machine-readable copy of the quota
-//! snapshot for scripts, status bars and `ai-usage-sidebar --print`
+//! snapshot for scripts, status bars and `islita --print`
 //! (docs/STATUSLINE.md).
 //!
 //! The file is written atomically (temp file + rename) next to the database

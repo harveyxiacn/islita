@@ -459,6 +459,16 @@ fn claude(value: &Value, kind: &str, ctx: &mut Context, offset: u64, out: &mut P
         }
     }
     if kind == "assistant" {
+        // Claude Code marks the last streamed fragment of a turn with the
+        // provider's stop reason. `tool_use` means the turn continues with a
+        // tool call; any terminal reason means the assistant is done.
+        let stop = msg.get("stop_reason").and_then(Value::as_str);
+        if matches!(
+            stop,
+            Some("end_turn" | "max_tokens" | "stop_sequence" | "refusal")
+        ) {
+            out.turn_finished = ctx.turn.clone();
+        }
         ctx.turn = current_turn;
     }
 }

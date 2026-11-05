@@ -1,14 +1,15 @@
 # Provider research — candidates beyond Claude Code and Codex
 
 Researched 2026-09-21 for v0.2.0 (§1–§3), extended for v0.6 with OpenRouter (§4)
-and multiple accounts (§5). **Nothing about Copilot, Gemini, Cursor or OpenRouter
-was tested against a live account**: the research machine has none of these tools
-installed or signed in (`~/.gemini`, `~/.cursor`, `~/.config/github-copilot` do
-not exist, there is no OpenRouter key). Every factual claim below is a citation to
-published source code or official documentation that was actually fetched; where a
-claim could not be backed by a source it says **NOT VERIFIED**. Only Claude Code
-and Codex (the baseline, and the two providers that support extra accounts) were
-built against real responses.
+and multiple accounts (§5), and for v0.7 with OpenCode Zen/Go (§6). **Nothing
+about Copilot, Gemini, Cursor, OpenRouter or OpenCode was tested against a live
+account**: the research machine has none of these tools installed or signed in
+(`~/.gemini`, `~/.cursor`, `~/.config/github-copilot` do not exist, there is no
+OpenRouter or OpenCode key). Every factual claim below is a citation to
+published source code or official documentation that was actually fetched; where
+a claim could not be backed by a source it says **NOT VERIFIED**. Only Claude
+Code and Codex (the baseline, and the two providers that support extra accounts)
+were built against real responses.
 
 ## The bar a candidate has to clear
 
@@ -29,6 +30,7 @@ CLI calls, with the same headers. That is the bar:
 | Google Gemini CLI | evidence for the HTTP call, **blocked on credential storage** | no (see §2) |
 | Cursor | **not implemented — ToS and stability** | no (see §3) |
 | OpenRouter | documented API, **no live account to verify** | yes, `experimental`, opt-in (see §4) |
+| OpenCode Zen / Go | first-party client source, **no live account to verify** | yes, `experimental`, opt-in (see §6) |
 
 ---
 
@@ -496,3 +498,105 @@ retention thinning are per account.
 * The tray shows one usage line per account (up to 6 extra ones).
 * Only Claude Code and Codex support extra accounts; an `accounts` entry for
   another provider is dropped.
+
+---
+
+## 6. OpenCode Zen / Go — first-party client source, experimental
+
+Added in v0.7. **Experimental — not verified against a live account.** There is
+no CLI login to borrow in the same way as Claude Code or Codex; the user copies
+an API key from `https://opencode.ai/auth`. Every shape below is from OpenCode's
+own source at commit
+[`893e8dc4`](https://github.com/sst/opencode/tree/893e8dc43f05e872d4cac603486ce8a7181170fa)
+(fetched 2026-11-05), not from a captured response.
+
+OpenCode has two paid products on the same Console account:
+
+* **Go** is a subscription with three rolling allowances;
+* **Zen** is pay-as-you-go with optional monthly spend limits.
+
+### 6.1 Go: the 5-hour / 7-day / 30-day windows
+
+OpenCode's usage service reads both products from the Console origin it is
+signed in to ([`packages/core/src/usage-limits.ts`](https://github.com/sst/opencode/blob/893e8dc43f05e872d4cac603486ce8a7181170fa/packages/core/src/usage-limits.ts)):
+
+```ts
+HttpClientRequest.get(`${new URL(server).origin}/zen/go/v1/usage`).pipe(
+  HttpClientRequest.bearerToken(credential.type === "oauth" ? credential.access : credential.key),
+  HttpClientRequest.setHeader("x-opencode-org-id", workspaceID),
+)
+```
+
+The response, from the same file's test
+([`packages/core/test/usage-limits.test.ts`](https://github.com/sst/opencode/blob/893e8dc43f05e872d4cac603486ce8a7181170fa/packages/core/test/usage-limits.test.ts)):
+
+```json
+{"usage": {
+  "rolling": {"status": "ok",           "percent": 42,  "resetsAt": "2026-10-24T17:00:00.000Z"},
+  "weekly":  {"status": "ok",           "percent": 18,  "resetsAt": "2026-10-24T17:00:00.000Z"},
+  "monthly": {"status": "rate-limited", "percent": 100, "resetsAt": "2026-10-24T17:00:00.000Z"}
+}}
+```
+
+`rolling` is the 5-hour allowance, `weekly` the 7-day one and `monthly` the
+30-day one. `status: "rate-limited"` is the source of the schema's `limited`
+boolean ([`packages/schema/src/usage-limits.ts`](https://github.com/sst/opencode/blob/893e8dc43f05e872d4cac603486ce8a7181170fa/packages/schema/src/usage-limits.ts)).
+A workspace without the member's Go subscription is refused with `403`; that is
+not an invalid key, so the provider falls back to Zen (below) before showing an
+error.
+
+### 6.2 Zen: monthly budgets
+
+Zen has dollar budgets rather than time windows
+([`usage-limits.ts`](https://github.com/sst/opencode/blob/893e8dc43f05e872d4cac603486ce8a7181170fa/packages/core/src/usage-limits.ts)):
+
+```ts
+HttpClientRequest.get(`${server}/api/policies/current-budgets`).pipe(
+  HttpClientRequest.setHeaders(ConsoleAccess.headers(credential)),
+)
+```
+
+`ConsoleAccess.headers` sends `Authorization: Bearer <key>` and
+`x-org-id: <workspaceID>` ([`packages/core/src/console-access.ts`](https://github.com/sst/opencode/blob/893e8dc43f05e872d4cac603486ce8a7181170fa/packages/core/src/console-access.ts)).
+The array carries `ruleID`, `limitDollars`, `spentDollars`, `scope`, `per`,
+`coverage`, `models`, `vendors`, `picked`, `shared` and `resetsAt`; a service
+account's key gets `403` because it has no budgets. The app shows the tightest
+budget (`spentDollars / limitDollars`) as one "Zen budget" window, or as an
+extra line when Go windows are present.
+
+### 6.3 Workspace id, and the "key only" caveat
+
+OpenCode itself only reads usage limits after an interactive Console sign-in,
+because that is where it learns the workspace id
+(`credential.metadata.orgID`). Its own source comments that *API keys carry no
+account or org*, so a pasted key may not identify a workspace
+([`packages/core/src/plugin/provider/opencode.ts` L614](https://github.com/sst/opencode/blob/893e8dc43f05e872d4cac603486ce8a7181170fa/packages/core/src/plugin/provider/opencode.ts#L614)).
+**NOT VERIFIED:** whether `GET /zen/go/v1/usage` answers a personal,
+single-workspace key without `x-opencode-org-id`. The provider therefore sends
+the header when `opencodeWorkspaceId` is set and omits it otherwise, so a
+single-workspace key has a chance to work with no extra setup. For a key that
+belongs to several workspaces (or a Zen budget read), the user pastes the id
+after `/console/` in the Console URL, or the whole URL.
+
+### 6.4 Storage and status mapping
+
+The key is stored in the OS keychain under service
+`io.github.harveyxiacn.islita.opencode` (entry `api-key`), never in
+`settings.json`, a log line or the UI. As a headless fallback the app also reads
+OpenCode's own `OPENCODE_API_KEY` environment variable. The key is only ever
+sent to `opencode.ai`.
+
+| Event | Result |
+|---|---|
+| missing key | `not_logged_in`, no request |
+| invalid `opencodeWorkspaceId` | `error` with the expected `wrk_…` shape, no request |
+| Go `200` | 5-hour, Weekly and 30-day windows; plan "Go" |
+| Go `403`, budgets readable | one "Zen budget" window; plan "Zen" |
+| Go `403`, no budget | `error` explaining Go is not enabled / the workspace id may be missing |
+| `401` | `token_expired`; save a new key |
+| `429` | `rate_limited` with `Retry-After`, last good windows stay |
+| transport / other | `error`, keeping the last good windows |
+
+Off by default and absent from the snapshot until the user saves a key or
+switches it on (Settings → Providers, badged *Experimental*). There are no local
+OpenCode session logs in this app, so there is no token history for it.

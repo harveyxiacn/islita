@@ -17,6 +17,7 @@
   import { hasKey, t, tDyn } from '$lib/i18n/i18n.svelte';
   import { accountEmail } from '$lib/privacy';
   import { quotaKey, sampleKey } from '$lib/providers';
+  import { providerPolled } from '$lib/sidebar-items';
   import { accentFor } from '$lib/stores/rings.svelte';
   import { settings } from '$lib/stores/settings.svelte';
   import { snapshot } from '$lib/stores/snapshot.svelte';
@@ -34,7 +35,10 @@
   const generatedAt = $derived(snapshot.value?.generatedAt);
 
   const providers = $derived.by(() => {
-    const list = snapshot.value?.providers ?? [];
+    // Settings → Providers is the switchboard. The overview only renders what
+    // is actually being tracked, so turning a provider off also declutters
+    // this tab (its historical data stays in History).
+    const list = (snapshot.value?.providers ?? []).filter((q) => providerPolled(q, s));
     return [...list].sort(
       (a, b) => (s.providers[a.provider]?.order ?? 0) - (s.providers[b.provider]?.order ?? 0)
     );

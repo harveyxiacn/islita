@@ -36,14 +36,37 @@
 <SettingsCard id="position" title={t('settings.position')} reset="position">
   {#if error}<p class="err" role="alert">{t('common.error', { message: error })}</p>{/if}
 
+  <Field label={t('settings.island')} hint={t('settings.island.hint')}>
+    <Toggle
+      checked={s.island}
+      label={t('settings.island')}
+      onchange={(v) => void settings.patch({ island: v })}
+    />
+  </Field>
+
+  {#if s.island}
+    <Field label={t('settings.islandMargin')}>
+      <input
+        class="field num"
+        type="number"
+        min="0"
+        max="64"
+        step="1"
+        value={s.islandMargin}
+        onchange={(e) => void settings.patch({ islandMargin: Math.round(num(e)) })}
+        aria-label={t('settings.islandMargin')}
+      />
+    </Field>
+  {/if}
+
   <Field label={t('settings.edge')}>
-    <select aria-label={t('settings.edge')} class="field" value={s.edge} onchange={(e) => void settings.patch({ edge: e.currentTarget.value as Edge })}>
+    <select aria-label={t('settings.edge')} class="field" value={s.edge} disabled={s.island} onchange={(e) => void settings.patch({ edge: e.currentTarget.value as Edge })}>
       {#each EDGES as v (v)}<option value={v}>{tDyn(`settings.edge.${v}`)}</option>{/each}
     </select>
   </Field>
 
   <Field label={tDyn(alongIsHorizontal ? 'settings.horizontalAlign' : 'settings.verticalAlign')}>
-    <select aria-label={tDyn(alongIsHorizontal ? 'settings.horizontalAlign' : 'settings.verticalAlign')} class="field" value={s.verticalAlign} onchange={(e) => void settings.patch({ verticalAlign: e.currentTarget.value as VerticalAlign })}>
+    <select aria-label={tDyn(alongIsHorizontal ? 'settings.horizontalAlign' : 'settings.verticalAlign')} class="field" value={s.verticalAlign} disabled={s.island} onchange={(e) => void settings.patch({ verticalAlign: e.currentTarget.value as VerticalAlign })}>
       {#each ALIGNS as v (v)}<option value={v}>{tDyn(alignLabel(v))}</option>{/each}
     </select>
   </Field>
@@ -53,6 +76,7 @@
       class="field num"
       type="number"
       step="1"
+      disabled={s.island}
       value={s.verticalOffset}
       onchange={(e) => void settings.patch({ verticalOffset: Math.round(num(e)) })}
       aria-label={tDyn(alongIsHorizontal ? 'settings.horizontalOffset' : 'settings.verticalOffset')}

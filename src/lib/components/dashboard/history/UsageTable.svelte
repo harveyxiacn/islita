@@ -203,7 +203,7 @@
     exported = null;
     const kind = tableView === 'sessions' ? 'sessions-' : '';
     try {
-      exported = await exportUsageCsv(csvText(), `ai-usage-${kind}${localDateInput(range.from)}-${localDateInput(range.to - 1)}.csv`);
+      exported = await exportUsageCsv(csvText(), `islita-${kind}${localDateInput(range.from)}-${localDateInput(range.to - 1)}.csv`);
     } catch (e) {
       actionError = String(e);
     } finally {

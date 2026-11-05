@@ -10,7 +10,7 @@ import {
   splitReleaseNotes,
 } from '../src/lib/whats-new';
 
-const SAMPLE = `# AI Usage Sidebar v0.6.0
+const SAMPLE = `# Islita v0.6.0
 
 ## 中文
 
@@ -42,7 +42,7 @@ test('the notes file is found by exact version only', () => {
 
 test('a release file splits into its two language sections', () => {
   const notes = splitReleaseNotes(SAMPLE);
-  expect(notes.title).toBe('AI Usage Sidebar v0.6.0');
+  expect(notes.title).toBe('Islita v0.6.0');
   expect(notes.zh).toContain('专注模式');
   expect(notes.zh).not.toContain('Added');
   expect(notes.en).toContain('Added');

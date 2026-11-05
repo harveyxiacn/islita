@@ -9,13 +9,21 @@ import type {
   BackupInfo,
   CalendarQuery,
   CalendarResult,
+  CloudMailAccount,
+  CloudMailPasswordRequest,
+  CloudMailProvider,
+  CloudMailScan,
   DashboardTab,
   Diagnostics,
+  DropOutcome,
+  DroppedFile,
   HistoryQuery,
   HistoryResult,
   ImportResult,
   IngestStats,
+  MailScan,
   MonitorInfo,
+  OpenCodeKeyStatus,
   PopoverRequest,
   PriceUpdateStatus,
   PricingTable,
@@ -34,9 +42,10 @@ import type {
   TokenTotals,
   UpdateStatus,
   WeeklySummary,
+  WechatScan,
   WindowUsageQuery,
 } from './types';
-import type { AnalysisSettings, EvaluationPreview, EvaluationReport, RequirementAssessment, SessionDetail, SessionInsights, SessionListQuery, SessionListResult } from './session-types';
+import type { AnalysisSettings, EvaluationPreview, EvaluationReport, RequirementAssessment, SessionDetail, SessionInsights, SessionListQuery, SessionListResult, TaskCompletion } from './session-types';
 import type { SettingsPatch } from './settings-writer';
 
 export const isTauri = (): boolean =>
@@ -104,6 +113,9 @@ export const applyPriceUpdate = () => invoke<PricingTable>('apply_price_update')
 export const useSourcePricing = () => invoke<PricingTable>('use_source_pricing');
 export const reingestLogs = () => invoke<IngestStats>('reingest_logs');
 export const getProviders = () => invoke<ProviderInfo[]>('get_providers');
+export const opencodeSetKey = (key: string) => invoke<void>('opencode_set_key', { key });
+export const opencodeClearKey = () => invoke<void>('opencode_clear_key');
+export const opencodeKeyStatus = () => invoke<OpenCodeKeyStatus>('opencode_key_status');
 export const getAppInfo = () => invoke<AppInfo>('get_app_info');
 /** Backs settings + database up into a new timestamped folder inside `dest`; no `dest` opens a folder picker. null = cancelled. */
 export const backupData = (dest?: string) => invoke<string | null>('backup_data', { dest: dest ?? null });
@@ -200,6 +212,32 @@ export const sidebarSetExpanded = (expanded: boolean) => invoke<void>('sidebar_s
 export const sidebarRelayout = (width: number, height: number) => invoke<void>('sidebar_relayout', { width, height });
 /** dx/dy: CSS px the pointer travelled since the drag started */
 export const sidebarDrag = (phase: 'start' | 'move' | 'end' | 'cancel', dx = 0, dy = 0) => invoke<void>('sidebar_drag', { phase, dx, dy });
+export const listTaskCompletions = (query: { sinceMs?: number; limit?: number } = {}) =>
+  invoke<TaskCompletion[]>('list_task_completions', { sinceMs: query.sinceMs ?? null, limit: query.limit ?? null });
+
+// ---- file drop station ----
+/** Copy OS-dropped paths into the app's private dropbox folder. */
+export const saveDroppedFiles = (paths: string[]) => invoke<DropOutcome>('save_dropped_files', { paths });
+/** Native multi-file picker; `null` when the user cancels. */
+export const pickDroppedFiles = () => invoke<DropOutcome | null>('pick_dropped_files');
+export const listDroppedFiles = (limit = 12) => invoke<DroppedFile[]>('list_dropped_files', { limit });
+export const openDropbox = () => invoke<string>('open_dropbox');
+
+// ---- local mail (headers only) ----
+export const pickMailFolder = () => invoke<string | null>('pick_mail_folder');
+export const scanMailFolder = (folder: string, limit = 6) => invoke<MailScan>('scan_mail_folder', { folder, limit });
+export const listCloudMailAccounts = () => invoke<CloudMailAccount[]>('mail_cloud_list');
+export const addCloudMailPassword = (request: CloudMailPasswordRequest) =>
+  invoke<CloudMailAccount>('mail_cloud_add_password', { request });
+export const loginCloudMail = (provider: CloudMailProvider, clientId: string, clientSecret?: string) =>
+  invoke<CloudMailAccount>('mail_cloud_oauth_login', { provider, clientId, clientSecret: clientSecret ?? null });
+export const cancelCloudMailLogin = () => invoke<void>('mail_cloud_oauth_cancel');
+export const reconnectCloudMail = (id: string) => invoke<CloudMailAccount>('mail_cloud_reconnect', { id });
+export const removeCloudMail = (id: string) => invoke<void>('mail_cloud_remove', { id });
+export const scanCloudMail = (id: string, limit = 6) => invoke<CloudMailScan>('mail_cloud_scan', { id, limit });
+
+// ---- WeChat conversation mirror (Windows accessibility, read-only) ----
+export const readWechatSessions = (limit = 8) => invoke<WechatScan>('read_wechat_sessions', { limit });
 export const popoverShow = (req: PopoverRequest) => invoke<void>('popover_show', { req });
 export const popoverHide = () => invoke<void>('popover_hide');
 export const popoverRelayout = (width: number, height: number) => invoke<void>('popover_relayout', { width, height });
@@ -216,6 +254,7 @@ export const quitApp = () => invoke<void>('quit_app');
 export const onSnapshotUpdated = (h: (s: AppSnapshot) => void) => listen<AppSnapshot>('snapshot-updated', h);
 export const onSettingsUpdated = (h: (s: Settings) => void) => listen<Settings>('settings-updated', h);
 export const onIngestProgress = (h: (s: IngestStats) => void) => listen<IngestStats>('ingest-progress', h);
+export const onTaskCompleted = (h: (t: TaskCompletion) => void) => listen<TaskCompletion>('task-completed', h);
 export const onPopoverTarget = (h: (r: PopoverRequest) => void) => listen<PopoverRequest>('popover-target', h);
 export const onSidebarState = (h: (s: SidebarState) => void) => listen<SidebarState>('sidebar-state', h);
 export const onDashboardNavigate = (h: (p: { tab: DashboardTab }) => void) => listen<{ tab: DashboardTab }>('dashboard-navigate', h);

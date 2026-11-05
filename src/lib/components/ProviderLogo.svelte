@@ -79,6 +79,13 @@
       <path d="M6.4 12 H10 C13 12 13 6.5 16 6.5 H19.5 M17 4 l2.6 2.5 -2.6 2.5" />
       <path d="M10 12 C13 12 13 17.5 16 17.5 H19.5 M17 15 l2.6 2.5 -2.6 2.5" />
     </g>
+  {:else if provider === 'opencode'}
+    <!-- generic angle brackets with a slash: "open code", not a trademark copy -->
+    <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 7 L4.5 12 L9 17" />
+      <path d="M15 7 L19.5 12 L15 17" />
+      <path d="M13.5 5.5 L10.5 18.5" />
+    </g>
   {:else}
     <g fill="none" stroke="currentColor" stroke-width="1.35">
       <circle cx="12" cy="12" r="9.2" />

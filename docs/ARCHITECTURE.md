@@ -1,4 +1,4 @@
-# AI Usage Sidebar — Architecture & Contracts
+# Islita — Architecture & Contracts
 
 This document is the **single source of truth** for module boundaries, data
 types, Tauri commands, events and window labels. Several people/agents work on
@@ -19,6 +19,10 @@ providers over time.
 Targets: Linux first (developed on CachyOS / GNOME Wayland), then macOS,
 other Linux distros, Windows. Stack: **Tauri 2 (Rust)** + **SvelteKit / Svelte 5
 / TypeScript** (adapter-static, SPA mode) + **SQLite (rusqlite, bundled)**.
+
+The opt-in **dynamic island** presentation and its plugin surface are specified
+in **docs/ISLAND.md**. It reuses the same sidebar window, placement maths and
+settings contract; it adds no window label and no network path.
 
 ## 2. Providers — verified facts (2026-09)
 
@@ -159,6 +163,20 @@ window when the key has a limit, otherwise `/api/v1/credits` (management keys
 only) gives an informational balance. No local logs, so no history of tokens.
 Details and mapping: **docs/PROVIDERS.md §4**.
 
+### OpenCode Zen / Go (experimental, unverified — 2026-11)
+
+Built from OpenCode's first-party client source only (`ProviderInfo.experimental`
+is `true`, off by default and absent from the snapshot until switched on). The
+key is pasted in Settings → Providers and stored in the OS keychain (service
+`io.github.harveyxiacn.islita.opencode`), with `OPENCODE_API_KEY` as a headless
+fallback; it never enters `settings.json`. `GET https://opencode.ai/zen/go/v1/usage`
+maps Go's `rolling` / `weekly` / `monthly` allowances to the 5-hour, Weekly and
+30-day windows. A key without Go falls back to the tightest Zen monthly budget
+from `/console/api/policies/current-budgets`, shown as one "Zen budget" window;
+with Go present the budget is only an extra line. `opencodeWorkspaceId` (a
+`wrk_…` id or the Console URL) is optional and sent as the workspace header.
+Details and citations: **docs/PROVIDERS.md §6**.
+
 ### Multiple accounts (Claude Code, Codex)
 
 The primary account of each provider is implicit; extra accounts come from
@@ -184,7 +202,7 @@ src/                      SvelteKit frontend                     [FRONTEND]
   lib/providers.ts        provider-agnostic frontend helpers      [FRONTEND]
 src-tauri/
   src/lib.rs, main.rs     builder wiring, plugins, invoke_handler list; main.rs also handles `--print` first [PLATFORM]
-  src/cli.rs              `ai-usage-sidebar --print`: reads snapshot.json, prints, exits (no window)  [BACKEND]
+  src/cli.rs              `islita --print`: reads snapshot.json, prints, exits (no window)  [BACKEND]
   src/window/             sidebar/popover/dashboard window logic, drag.rs, hover.rs, monitors.rs, linux.rs [PLATFORM]
     tray.rs               tray icon + menu (usage lines, presets, focus, pause polling)
     tray_status.rs        pure tray content: usage lines, tooltip, severity dot, percent icon, system language
@@ -197,9 +215,13 @@ src-tauri/
   src/settings_history.rs undo ring (settings.history.json)       [BACKEND]
   src/settings_io.rs      export / import / history / restore commands  [BACKEND]
   src/diagnostics.rs      get_diagnostics, open_folder (redacted)  [BACKEND]
+  src/dropbox.rs          file drop station: capped, name-safe copy into data_dir/dropbox  [BACKEND]
+  src/mail.rs             local mail headers: .eml / Maildir scan, no body or network  [BACKEND]
+  src/cloud_mail.rs       opt-in Gmail/Outlook OAuth + IMAP app-password accounts; secrets in OS keychain  [BACKEND]
+  src/wechat.rs           Windows UI Automation read-only WeChat conversation mirror  [BACKEND]
   src/accounts.rs         extra-account commands (check_account_dir, pick_account_folder)  [BACKEND]
   src/onboarding.rs       get_provider_setup (existence checks only)  [BACKEND]
-  src/providers/          claude.rs, codex.rs, copilot.rs, openrouter.rs, mod.rs (trait, registry, retry, cache) [BACKEND]
+  src/providers/          claude.rs, codex.rs, copilot.rs, openrouter.rs, opencode.rs, mod.rs (trait, registry, retry, cache) [BACKEND]
   src/alerts/             mod.rs (timer, once-only state), threshold.rs, predictive.rs, budget.rs, summary.rs, notifier.rs (native + webhook, focus gate) [BACKEND]
   src/focus.rs            focus / do-not-disturb helpers around focusUntil [BACKEND]
   src/forecast.rs         quota projection, token-rate fallback, backtest [BACKEND]
@@ -360,14 +382,31 @@ without a row, or a row without a registration, is a documentation bug).
 | `use_source_pricing` | – | `PricingTable` (explicitly switches from a saved custom table to the selected source, backing up the saved table first) |
 | `refresh_pricing` | – | `PricingTable` (legacy compatibility command that explicitly checks and applies the selected source with the same custom-table protection) |
 | `reingest_logs` | – | `IngestStats` (full rescan) |
-| `get_providers` | – | `ProviderInfo[]` |
+| `get_providers` | – | `ProviderInfo[]` (also primes the OpenCode keychain cache once) |
+| `opencode_set_key` | `key: string` | `()` — validates the key and stores it in the OS keychain; never logs it |
+| `opencode_clear_key` | – | `()` — removes the app's keychain entry (not `OPENCODE_API_KEY`) |
+| `opencode_key_status` | – | `{ saved: boolean, fromEnv: boolean }` |
 | `get_app_info` | – | `AppInfo` |
 
-### Settings tooling and diagnostics — `diagnostics.rs`, `settings_io.rs`, `settings_history.rs`
+### Settings tooling, diagnostics and local file features — `diagnostics.rs`, `dropbox.rs`, `mail.rs`, `cloud_mail.rs`, `wechat.rs`, `settings_io.rs`, `settings_history.rs`
 | command | args | returns |
 |---|---|---|
 | `get_diagnostics` | – | `Diagnostics` — version, OS/arch, display backend, provider status (e-mails always masked), effective settings (`pricingUrl` stripped of credentials/query), log/config/data folders and the last 80 lines of the newest log, run through `evaluation::redact`. Never contains a token. |
 | `open_folder` | `which: "log" \| "config" \| "data"` | opens that folder in the file manager (a name, never a path) |
+| `save_dropped_files` | `paths: string[]` | `DropOutcome` — copies regular files into `<data>/dropbox/YYYY-MM-DD/`; 20 files / 512 MiB each, symlinks and directories skipped, never overwrites |
+| `pick_dropped_files` | – | `DropOutcome \| null` — native multi-file picker through the same copy rules (null on cancel) |
+| `list_dropped_files` | `limit?` | `DroppedFile[]` — destination name, size, save time and dropbox-relative path; never the source path |
+| `open_dropbox` | – | `string` — creates and opens the dropbox folder |
+| `pick_mail_folder` | – | `string \| null` — native folder picker for local `.eml` / Maildir mail (null on cancel) |
+| `scan_mail_folder` | `folder: string, limit?` | `MailScan` — headers only (128 KiB read cap), newest first; no body, account or network |
+| `mail_cloud_list` | – | `CloudAccount[]` — metadata only from `cloud-accounts.json`; no token/password |
+| `mail_cloud_add_password` | `request: CloudMailPasswordRequest` | `CloudAccount` — validates over IMAP (implicit TLS or STARTTLS), stores the app password in the OS keychain, then saves metadata; duplicate provider+address rejected (max 6) |
+| `mail_cloud_oauth_login` | `provider: "gmail" \| "outlook", clientId, clientSecret?` | `CloudAccount` — opens the provider consent page, waits for the loopback redirect (PKCE + state, 5 min), stores tokens in the keychain; Google needs the Desktop-app client secret |
+| `mail_cloud_oauth_cancel` | – | flips the loopback wait's cancel flag |
+| `mail_cloud_reconnect` | `id` | `CloudAccount` — re-runs OAuth for an existing account using its saved client id/secret; replaces the same row |
+| `mail_cloud_remove` | `id` | deletes the account metadata and its keychain entries |
+| `mail_cloud_scan` | `id, limit?` | `CloudMailScan` — unread inbox headers only; Gmail API / Graph / IMAP `RFC822.HEADER`; updates `lastCheckMs`/`lastError`; never returns tokens |
+| `read_wechat_sessions` | `limit?` | `WechatScan` — latest message per visible WeChat conversation through Windows UI Automation (`mmui::ChatSessionCell`), read-only; `unsupported` off Windows, `not_running` / `no_sessions` / `blocked` when unavailable. No database, keystrokes, network or persistence |
 | `export_settings` | – | `string \| null` (native save dialog, writes the effective `settings.json`; null on cancel) |
 | `import_settings` | – | `ImportResult \| null` (native open dialog, ≤ 1 MiB; goes through the normal `update_settings` merge so unknown/invalid values are ignored; `focusUntil` and `version` are never imported; `ignored` lists keys that were unknown, invalid or clamped) |
 | `get_settings_history` | – | `SettingsVersion[]` — the undo ring, newest first (see §7) |
@@ -401,7 +440,7 @@ webhook. Once-only bookkeeping for budget and summary lives in
 |---|---|---|
 | `export_usage_csv` | `csv: string, suggestedName: string` | `string \| null` (native save dialog, UTF-8 CSV path on success; null on cancel) |
 | `save_share_card` | `png: number[], suggestedNameHint: string` | `string \| null` (native save dialog for the dashboard's usage share card; the bytes must be a PNG of at most 8 MiB; null on cancel) |
-| `backup_data` | `dest?: string` | `string \| null` (creates `ai-usage-sidebar-backup-<timestamp>/` with `settings.json`, a `VACUUM INTO` copy of `usage.db` and `backup.json` inside `dest`, or inside a folder picked with a native dialog; returns the new folder, null on cancel). Backups contain local paths and session metadata |
+| `backup_data` | `dest?: string` | `string \| null` (creates `islita-backup-<timestamp>/` with `settings.json`, a `VACUUM INTO` copy of `usage.db` and `backup.json` inside `dest`, or inside a folder picked with a native dialog; returns the new folder, null on cancel). Backups contain local paths and session metadata |
 | `restore_data` | `src?: string` | `BackupInfo \| null` (validates the backup: read-only open, `quick_check`, `meta.schema_version` not newer than the app; stages it in `<data dir>/restore-pending/`. `backup::apply_pending` swaps it in at the next start before the database opens, keeping the replaced files in `pre-restore/`) |
 | `restart_app` | – | – (relaunches the app) |
 
@@ -411,6 +450,7 @@ Semantics, limits and privacy rules are in §11; the contract is the signature.
 | command | args | returns |
 |---|---|---|
 | `list_sessions` | `query: SessionListQuery` (`from`, `to`, `provider`, `project`, `search`, `sort`, `offset`, `limit`) | `{rows, total, offset, limit}` |
+| `list_task_completions` | `sinceMs?`, `limit?` | `TaskCompletion[]` — finished main-session turns, newest first; no prompt/response text |
 | `get_session_insights` | the same filters (paging and sort ignored) | `SessionInsights` (one aggregate over at most the newest 1000 sessions) |
 | `get_session_detail` | `provider`, `sessionId`, `offset?`, `limit?` | summary, bounded message page, turns, children, warnings |
 | `set_session_alias` | `provider`, `sessionId`, `alias` | local display name only |
@@ -455,6 +495,7 @@ Semantics, limits and privacy rules are in §11; the contract is the signature.
 | `snapshot-updated` | `AppSnapshot` | backend scheduler after every refresh |
 | `settings-updated` | `Settings` | backend `update_settings` |
 | `ingest-progress` | `IngestStats` | backend ingestion |
+| `task-completed` | `TaskCompletion` | backend after ingestion detects a finished main-session turn (`taskNotifications` only gates the OS/webhook notice, not this local event) |
 | `popover-target` | `PopoverRequest` | platform, tells the popover window what to render |
 | `sidebar-state` | `SidebarState` | platform |
 | `dashboard-navigate` | `{ tab: string }` | platform |
@@ -478,8 +519,8 @@ store consumer removes the event listener, timer and lifecycle handlers.
 
 Linux notes: GNOME Wayland does not allow clients to position windows or stay
 on top, so on Linux the app forces `GDK_BACKEND=x11` (XWayland) unless
-`AI_USAGE_SIDEBAR_BACKEND=wayland` is set. With NVIDIA drivers WebKitGTK needs
-`WEBKIT_DISABLE_DMABUF_RENDERER=1`. With `AI_USAGE_SIDEBAR_BACKEND=wayland` the bar
+`ISLITA_BACKEND=wayland` is set. With NVIDIA drivers WebKitGTK needs
+`WEBKIT_DISABLE_DMABUF_RENDERER=1`. With `ISLITA_BACKEND=wayland` the bar
 docks natively through `wlr-layer-shell` where `gtk-layer-shell` and the compositor
 support it (unverified on real hardware; falls back to XWayland). See
 **docs/PLATFORM.md**.
@@ -833,6 +874,7 @@ raw reasoning effort and model variants.
 | `settings.history.json` | config | undo ring, 5 versions (§7) |
 | `analysis-settings.json` | config | AI-assessment settings (§11) |
 | `pricing.json` | config | the user's saved price table, when any |
+| `cloud-accounts.json` | config | cloud-mail account metadata only (id, provider, address, host/port, label, sync state); OS-keychain service `io.github.harveyxiacn.islita.mail` holds tokens/app passwords/client secrets |
 | `usage.db` | data | SQLite database above (WAL) |
 | `snapshot.json` | data | machine-readable quota snapshot while `exportSnapshot` is on, schema 1 (`export_snapshot.rs`, docs/STATUSLINE.md); never holds e-mails or paths |
 | `alerts-state.json` | data | once-only bookkeeping for budget and weekly-summary alerts |

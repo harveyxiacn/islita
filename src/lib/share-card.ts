@@ -403,10 +403,10 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, model: ShareModel, 
   }
 }
 
-/** File name for the saved image: `ai-usage-2026-10.png`. */
+/** File name for the saved image: `islita-2026-10.png`. */
 export function shareFileName(now: number): string {
   const d = new Date(now);
-  return `ai-usage-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.png`;
+  return `islita-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.png`;
 }
 
 /** Local-time bounds `[from, to)` of the month containing `now`. */

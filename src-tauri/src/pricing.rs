@@ -14,7 +14,7 @@ pub const PRICING_FILE: &str = "pricing.json";
 /// The official, versioned source used unless the user configured another
 /// HTTPS source in Settings. This table can be revised without an app release.
 pub const DEFAULT_PRICING_URL: &str =
-    "https://raw.githubusercontent.com/harveyxiacn/AI-usage-monitor-sidebar/main/pricing.json";
+    "https://raw.githubusercontent.com/harveyxiacn/islita/main/pricing.json";
 /// Revision of [`DEFAULTS`]. Keep this in sync with the shipped `pricing.json`.
 pub const BUILTIN_PRICING_UPDATED_AT: &str = "2026-10-02T00:00:00Z";
 

@@ -8,13 +8,13 @@
 //! did before the token fallback, "with tokens" is what it does now.
 //!
 //! ```text
-//! cargo run --example forecast_backtest -- ~/.local/share/io.github.harveyxiacn.ai-usage-sidebar/usage.db
+//! cargo run --example forecast_backtest -- ~/.local/share/io.github.harveyxiacn.islita/usage.db
 //! ```
 
-use ai_usage_sidebar_lib::commands::forecast::{backtest, BacktestReport};
-use ai_usage_sidebar_lib::commands::store;
-use ai_usage_sidebar_lib::model::WindowKind;
 use anyhow::{Context, Result};
+use islita_lib::commands::forecast::{backtest, BacktestReport};
+use islita_lib::commands::store;
+use islita_lib::model::WindowKind;
 
 fn fmt(v: Option<f64>, unit: &str) -> String {
     v.map_or("n/a".to_string(), |v| format!("{v:.1} {unit}"))

@@ -44,7 +44,7 @@ const SONAME: &str = "libgtk-layer-shell.so.0";
 
 /// Guards against an unbounded re-exec chain if the environment ever makes
 /// [`prepare_backend`] want to restart twice.
-const REEXEC_MARKER: &str = "AI_USAGE_SIDEBAR_BACKEND_REEXEC";
+const REEXEC_MARKER: &str = "ISLITA_BACKEND_REEXEC";
 
 /// The subset of the gtk-layer-shell C ABI we use. Signatures follow
 /// `gtk-layer-shell.h`; `gboolean` and every enum are plain `gint` (`i32`).
@@ -153,7 +153,7 @@ pub fn prepare_backend() -> Result<(), String> {
              install gtk-layer-shell or enable XWayland."
         ));
     }
-    eprintln!("AI Usage Sidebar: {reason}; using XWayland for edge docking.");
+    eprintln!("Islita: {reason}; using XWayland for edge docking.");
     if !gtk::is_initialized() {
         std::env::set_var("GDK_BACKEND", "x11");
         return Ok(());
@@ -170,7 +170,7 @@ pub fn prepare_backend() -> Result<(), String> {
     use std::os::unix::process::CommandExt;
     let error = std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
         .args(std::env::args_os().skip(1))
-        .env("AI_USAGE_SIDEBAR_BACKEND", "x11")
+        .env("ISLITA_BACKEND", "x11")
         .env("GDK_BACKEND", "x11")
         .env(REEXEC_MARKER, "1")
         .exec();
@@ -214,7 +214,7 @@ pub fn initialize(app: &AppHandle) -> anyhow::Result<()> {
         // is not realised, and we are on the GTK main thread.
         unsafe {
             (api.init)(pointer);
-            (api.set_namespace)(pointer, c"ai-usage-sidebar".as_ptr());
+            (api.set_namespace)(pointer, c"islita".as_ptr());
             if let Some(set_keyboard) = api.set_keyboard {
                 set_keyboard(pointer, KEYBOARD_MODE_NONE);
             }

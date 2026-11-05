@@ -388,11 +388,11 @@ pub fn setup(app: &AppHandle) -> anyhow::Result<()> {
         });
     }
 
-    // Debug-only demo hook for screenshots: AI_USAGE_SIDEBAR_DEMO=popover|dashboard|both
+    // Debug-only demo hook for screenshots: ISLITA_DEMO=popover|dashboard|both
     // shows the popover for the first ring / opens the dashboard a few seconds
     // after start, without needing a real pointer.
     #[cfg(debug_assertions)]
-    if let Ok(demo) = std::env::var("AI_USAGE_SIDEBAR_DEMO") {
+    if let Ok(demo) = std::env::var("ISLITA_DEMO") {
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(6)).await;
@@ -410,8 +410,7 @@ pub fn setup(app: &AppHandle) -> anyhow::Result<()> {
                 popover::set_pinned(&handle, true);
             }
             if demo == "dashboard" || demo == "both" {
-                let tab = std::env::var("AI_USAGE_SIDEBAR_DEMO_TAB")
-                    .unwrap_or_else(|_| "overview".into());
+                let tab = std::env::var("ISLITA_DEMO_TAB").unwrap_or_else(|_| "overview".into());
                 dashboard::open(&handle, Some(tab));
             }
         });

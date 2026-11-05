@@ -4,7 +4,7 @@
 fn main() {
     // `--print` is a plain CLI: it must not start Tauri or wake the
     // single-instance plugin of a running app, so it is decided first.
-    if let Some(code) = ai_usage_sidebar_lib::cli::handle(std::env::args_os()) {
+    if let Some(code) = islita_lib::cli::handle(std::env::args_os()) {
         std::process::exit(code);
     }
     // Platform environment tweaks must happen before GTK/WebKit initialise.
@@ -13,7 +13,7 @@ fn main() {
         // GNOME Wayland cannot position or keep-above xdg toplevels, so run on
         // XWayland unless the user explicitly opts into native Wayland.
         if let Some(backend) = linux_backend(
-            std::env::var("AI_USAGE_SIDEBAR_BACKEND").ok().as_deref(),
+            std::env::var("ISLITA_BACKEND").ok().as_deref(),
             std::env::var("GDK_BACKEND").ok().as_deref(),
             std::env::var_os("DISPLAY").is_some(),
             std::env::var_os("WAYLAND_DISPLAY").is_some(),
@@ -25,8 +25,8 @@ fn main() {
         // compositor cannot dock an edge widget. A failure here is not fatal —
         // the app then behaves exactly like it did before layer-shell existed,
         // i.e. an ordinary Wayland window the compositor places.
-        if let Err(e) = ai_usage_sidebar_lib::window::linux::prepare_backend() {
-            eprintln!("AI Usage Sidebar: {e}");
+        if let Err(e) = islita_lib::window::linux::prepare_backend() {
+            eprintln!("Islita: {e}");
         }
         // WebKitGTK + proprietary NVIDIA driver renders blank/black windows
         // with the DMABUF renderer.
@@ -36,14 +36,14 @@ fn main() {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
     }
-    ai_usage_sidebar_lib::run()
+    islita_lib::run()
 }
 
 /// Which GDK backend to force, or `None` to leave `GDK_BACKEND` untouched.
 ///
 /// The policy, in order:
 ///
-/// 1. `AI_USAGE_SIDEBAR_BACKEND=wayland|x11` always wins.
+/// 1. `ISLITA_BACKEND=wayland|x11` always wins.
 /// 2. A `GDK_BACKEND` the user set themselves is respected as-is — that is
 ///    how `GDK_BACKEND=wayland` opts into native layer-shell docking.
 /// 3. Without an X display there is nothing to fall back to: Wayland.
@@ -95,7 +95,7 @@ mod tests {
 
     /// The regression that matters on GNOME: as long as an X display exists,
     /// nothing may silently pick native Wayland. Only the two explicit opt-ins
-    /// (`AI_USAGE_SIDEBAR_BACKEND=wayland`, a user-set `GDK_BACKEND=wayland`)
+    /// (`ISLITA_BACKEND=wayland`, a user-set `GDK_BACKEND=wayland`)
     /// and the no-X-display case may end up there.
     #[test]
     fn xwayland_is_the_default_whenever_a_display_exists() {

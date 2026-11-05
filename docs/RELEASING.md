@@ -1,4 +1,4 @@
-# Releasing AI Usage Sidebar
+# Releasing Islita
 
 Everything a release needs: the version checklist, the updater signing key
 (including what happens when it does not exist), and the CI facts that bite.
@@ -18,7 +18,7 @@ the build instead of quietly updating itself.
 | `package.json` | `"version"` |
 | `src-tauri/tauri.conf.json` | `"version"` (this is what the app reports and what `latest.json` compares against) |
 | `src-tauri/Cargo.toml` | `[package] version` |
-| `src-tauri/Cargo.lock` | the `[[package]] name = "ai-usage-sidebar"` entry |
+| `src-tauri/Cargo.lock` | the `[[package]] name = "islita"` entry |
 
 ```sh
 NEW=0.2.0
@@ -75,16 +75,16 @@ explicitly (`git push origin refs/tags/<name>`).
 ### 2.2 Generating a key (once, on the maintainer's machine)
 
 ```sh
-pnpm tauri signer generate -w ~/.tauri/ai-usage-sidebar.key
+pnpm tauri signer generate -w ~/.tauri/islita.key
 ```
 
 It prints the public key and writes two files:
 
-* `~/.tauri/ai-usage-sidebar.key` — the private key. Back it up somewhere
+* `~/.tauri/islita.key` — the private key. Back it up somewhere
   safe. **Losing it means no existing installation can ever be updated
   in place again**: the pubkey baked into shipped binaries would no longer
   match, and users would have to reinstall by hand.
-* `~/.tauri/ai-usage-sidebar.key.pub` — the public key, which belongs in
+* `~/.tauri/islita.key.pub` — the public key, which belongs in
   `plugins.updater.pubkey` (base64, one line).
 
 If you generate a *new* key, the `pubkey` in `tauri.conf.json` must be
@@ -98,7 +98,7 @@ secret*:
 
 | Secret | Value |
 |---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | the whole content of `~/.tauri/ai-usage-sidebar.key` (or the key string itself) |
+| `TAURI_SIGNING_PRIVATE_KEY` | the whole content of `~/.tauri/islita.key` (or the key string itself) |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | the password chosen during `signer generate`; **create it even if empty** if you set one |
 
 Nothing else needs to change: `release.yml` already passes both to
@@ -159,7 +159,7 @@ Implementation: `src-tauri/src/updater.rs`, `src/lib/stores/update.svelte.ts`.
 * Installing is always an explicit click, and it restarts the app.
 * **Which installs may replace themselves**: AppImage, macOS `.app`, Windows
   NSIS/MSI. A `.deb`/`.rpm` belongs to the package manager and
-  `scripts/install-linux.sh` owns `~/.local/bin/ai-usage-sidebar`; for those,
+  `scripts/install-linux.sh` owns `~/.local/bin/islita`; for those,
   `UpdateStatus.canInstall` is `false` and the UI offers the release page
   instead of an install button. The detection is the `APPIMAGE` environment
   variable, which only an AppImage runtime sets.
@@ -218,7 +218,7 @@ Two ways out, pick one before enabling branch protection:
 `scripts/smoke-linux.sh` launches the real binary under `xvfb-run` +
 `dbus-run-session`, with `WEBKIT_DISABLE_DMABUF_RENDERER=1` and a throw-away
 `XDG_*` home, and waits (default 60 s) for `sidebar revealed` to appear in
-`~/.local/share/io.github.harveyxiacn.ai-usage-sidebar/logs/`. It then kills
+`~/.local/share/io.github.harveyxiacn.islita/logs/`. It then kills
 the process group and exits.
 
 This catches what nothing else can: a panic in `setup()`, a missing runtime

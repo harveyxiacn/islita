@@ -6,8 +6,8 @@
 # Settings and the usage database are never touched.
 set -euo pipefail
 
-APP_ID="ai-usage-sidebar"
-APP_NAME="AI Usage Sidebar"
+APP_ID="islita"
+APP_NAME="Islita"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 BIN_DIR="$HOME/.local/bin"
@@ -62,9 +62,9 @@ cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Type=Application
 Name=$APP_NAME
-Name[zh_CN]=AI 使用量侧边栏
-Comment=Claude Code / Codex quota sidebar
-Comment[zh_CN]=Claude Code / Codex 额度侧边栏
+Name[zh_CN]=Islita
+Comment=Plugin island for AI quotas, mail, calendar, notes, files, music and tasks
+Comment[zh_CN]=插件灵动岛：AI 额度、邮件、日程、便利贴、文件、音乐与任务
 Exec=$BIN_DIR/$APP_ID
 Icon=$APP_ID
 Terminal=false

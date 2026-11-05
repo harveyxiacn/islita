@@ -1,10 +1,10 @@
 [package]
-name = "ai-usage-sidebar"
-version = "0.6.0"
-description = "Edge sidebar widget showing Claude Code / Codex rate-limit quotas and token usage history"
+name = "islita"
+version = "0.7.0"
+description = "Plugin island for the desktop: Claude Code / Codex quotas, mail, calendar, notes, file drop, music and tasks"
 authors = ["Harvey Xia"]
 license = "MIT"
-repository = "https://github.com/harveyxiacn/AI-usage-monitor-sidebar"
+repository = "https://github.com/harveyxiacn/islita"
 edition = "2021"
 
 [features]
@@ -16,7 +16,7 @@ native-smoke = []
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "ai_usage_sidebar_lib"
+name = "islita_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -35,6 +35,7 @@ tauri-plugin-process = "2"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 chrono = { version = "0.4.45", features = ["serde"] }
+encoding_rs = "0.8"
 dirs = "7.0.0"
 thiserror = "2.0.20"
 anyhow = "1.0.104"
@@ -45,10 +46,23 @@ async-trait = "0.1.92"
 parking_lot = "0.12.5"
 once_cell = "1.21.4"
 notify = "8.2.0"
-reqwest = { version = "0.13", features = ["json", "gzip"] }
+reqwest = { version = "0.13", features = ["json", "gzip", "form", "query"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2.12.0"
 tauri-plugin-global-shortcut = "2.3.2"
+# Cloud mail: OAuth/PKCE, IMAP fetch and OS-keychain token storage.
+keyring = { version = "3.6.3", default-features = false, features = [
+  "apple-native",
+  "windows-native",
+  "sync-secret-service",
+  "crypto-rust",
+] }
+imap = "2.4.1"
+mailparse = "0.16"
+native-tls = "0.2"
+sha2 = "0.10"
+rand = "0.9"
+url = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
@@ -60,6 +74,18 @@ strip = true
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 window-vibrancy = "0.8.0"
+
+# UI Automation is how the WeChat panel mirrors the visible conversation list
+# without reading WeChat's database or driving its UI. Windows only.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61.3", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
+  "Win32_UI_Accessibility",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"

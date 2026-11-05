@@ -138,7 +138,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: 'AI Usage Sidebar ${{ github.event.inputs.tag || github.ref_name }}'
+          releaseName: 'Islita ${{ github.event.inputs.tag || github.ref_name }}'
           releaseBody: 'See the assets below to download and install this version.'
           releaseDraft: true
           prerelease: false

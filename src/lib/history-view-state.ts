@@ -5,7 +5,7 @@ import type { HeatMetric, HistoryPreset } from './history';
 export type HistoryView = 'usage' | 'quota' | 'cost';
 export const HISTORY_VIEWS: readonly HistoryView[] = ['usage', 'quota', 'cost'];
 
-const VIEW_STORAGE_KEY = 'ai-usage-sidebar.history.view';
+const VIEW_STORAGE_KEY = 'islita.history.view';
 
 export const historyViewState = {
   view: 'usage' as HistoryView,

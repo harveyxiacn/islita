@@ -5,12 +5,12 @@
 //! says about real polling data (irregular spacing, idle nights, resets).
 //!
 //! ```text
-//! cargo run --example forecast_probe -- ~/.local/share/io.github.harveyxiacn.ai-usage-sidebar/usage.db
+//! cargo run --example forecast_probe -- ~/.local/share/io.github.harveyxiacn.islita/usage.db
 //! ```
 
-use ai_usage_sidebar_lib::commands::{forecast, store};
-use ai_usage_sidebar_lib::model::WindowKind;
 use anyhow::{Context, Result};
+use islita_lib::commands::{forecast, store};
+use islita_lib::model::WindowKind;
 
 fn main() -> Result<()> {
     let source = std::env::args()

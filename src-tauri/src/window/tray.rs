@@ -42,6 +42,9 @@ pub struct MenuItems {
     /// possible account, handed out in snapshot order by `sync_usage_with`.
     account_usage: Vec<MenuItem<tauri::Wry>>,
     usage_sep: PredefinedMenuItem<tauri::Wry>,
+    /// "Monitored providers" check list; one entry per registered provider.
+    providers: Submenu<tauri::Wry>,
+    provider_toggle: Vec<(&'static str, CheckMenuItem<tauri::Wry>)>,
     focus: Submenu<tauri::Wry>,
     /// 1 hour, until tomorrow, until turned off, off (see `focus_labels`).
     focus_items: Vec<MenuItem<tauri::Wry>>,
@@ -78,6 +81,9 @@ mod ids {
     pub const FOCUS_FOREVER: &str = "focus_forever";
     pub const FOCUS_OFF: &str = "focus_off";
     pub const PRESETS: &str = "presets";
+    pub const PROVIDERS: &str = "providers";
+    /// Followed by the provider id: `provider_toggle_claude`.
+    pub const PROVIDER_PREFIX: &str = "provider_toggle_";
 }
 
 /// Tray labels in the user's language (see [`prefers_chinese`]).
@@ -96,6 +102,9 @@ struct Labels {
     quit: &'static str,
     focus: &'static str,
     presets: &'static str,
+    providers: &'static str,
+    /// Same order as `DEFAULT_PROVIDER_ORDER`.
+    provider_names: [&'static str; 5],
     /// `{time}` is replaced with the local `HH:MM` the focus ends.
     focus_until_time: &'static str,
     focus_until_off: &'static str,
@@ -130,6 +139,14 @@ fn labels(settings: &Settings) -> Labels {
             quit: "退出",
             focus: "专注模式",
             presets: "预设",
+            providers: "监测的服务商",
+            provider_names: [
+                "Claude Code",
+                "Codex",
+                "GitHub Copilot",
+                "OpenRouter",
+                "OpenCode",
+            ],
             focus_until_time: "专注模式 · 至 {time}",
             focus_until_off: "专注模式 · 已开启",
             focus_choices: ["1 小时", "到明天 08:00", "直到手动关闭", "关闭"],
@@ -149,6 +166,14 @@ fn labels(settings: &Settings) -> Labels {
             quit: "Quit",
             focus: "Focus mode",
             presets: "Presets",
+            providers: "Monitored providers",
+            provider_names: [
+                "Claude Code",
+                "Codex",
+                "GitHub Copilot",
+                "OpenRouter",
+                "OpenCode",
+            ],
             focus_until_time: "Focus mode · until {time}",
             focus_until_off: "Focus mode · on",
             focus_choices: [
@@ -213,6 +238,26 @@ pub fn build(app: &AppHandle) -> anyhow::Result<()> {
         settings.polling_paused,
         None::<&str>,
     )?;
+    // A check item per provider: the quickest way to start or stop monitoring
+    // one without opening the dashboard. Extra accounts follow their
+    // provider's switch and are not listed separately.
+    let providers_menu = Submenu::with_id(app, ids::PROVIDERS, l.providers, true)?;
+    let mut provider_toggle = Vec::new();
+    for (index, id) in crate::commands::providers::DEFAULT_PROVIDER_ORDER
+        .iter()
+        .enumerate()
+    {
+        let item = CheckMenuItem::with_id(
+            app,
+            format!("{}{id}", ids::PROVIDER_PREFIX),
+            l.provider_names[index],
+            true,
+            crate::commands::providers::is_enabled(&settings, id),
+            None::<&str>,
+        )?;
+        providers_menu.append(&item)?;
+        provider_toggle.push((*id, item));
+    }
     let open_dashboard = MenuItem::with_id(app, ids::DASHBOARD, l.dashboard, true, None::<&str>)?;
     let open_settings = MenuItem::with_id(app, ids::SETTINGS, l.settings, true, None::<&str>)?;
     let update = MenuItem::with_id(
@@ -291,6 +336,7 @@ pub fn build(app: &AppHandle) -> anyhow::Result<()> {
             &always_show,
             &refresh,
             &pause,
+            &providers_menu,
             &open_dashboard,
             &open_settings,
             &update,
@@ -345,6 +391,8 @@ pub fn build(app: &AppHandle) -> anyhow::Result<()> {
             usage,
             account_usage,
             usage_sep,
+            providers: providers_menu,
+            provider_toggle,
             focus,
             focus_items,
             presets,
@@ -425,6 +473,18 @@ fn on_menu(app: &AppHandle, id: &str) {
         ids::QUIT => {
             log::info!("quit from tray");
             app.exit(0);
+        }
+        provider if provider.starts_with(ids::PROVIDER_PREFIX) => {
+            let id = &provider[ids::PROVIDER_PREFIX.len()..];
+            let enabled = crate::commands::providers::is_enabled(&window::settings_of(app), id);
+            log::info!("tray provider toggle `{id}` -> {}", !enabled);
+            if let Err(e) = crate::commands::settings::update(
+                app,
+                &serde_json::json!({"providers": {id: {"enabled": !enabled}}}),
+            ) {
+                log::error!("could not persist the provider switch: {e:#}");
+            }
+            sync(app, &window::settings_of(app));
         }
         preset if preset.starts_with(tray_presets::ID_PREFIX) => apply_preset(app, preset),
         other => log::debug!("unhandled tray menu id `{other}`"),
@@ -557,6 +617,12 @@ pub fn sync(app: &AppHandle, settings: &Settings) {
             log::debug!("tray check item update failed: {e}");
         }
         let l = labels(settings);
+        let _ = items.providers.set_text(l.providers);
+        for (id, item) in &items.provider_toggle {
+            if let Err(e) = item.set_checked(crate::commands::providers::is_enabled(settings, id)) {
+                log::debug!("tray provider check item update failed: {e}");
+            }
+        }
         for (item, text) in [
             (&items.toggle, l.toggle),
             (&items.refresh, l.refresh),

@@ -44,13 +44,13 @@ Native Wayland is **strictly opt-in**, in this order:
 
 | Condition | `GDK_BACKEND` |
 |---|---|
-| `AI_USAGE_SIDEBAR_BACKEND=wayland` | `wayland` |
-| `AI_USAGE_SIDEBAR_BACKEND=x11` | `x11` |
+| `ISLITA_BACKEND=wayland` | `wayland` |
+| `ISLITA_BACKEND=x11` | `x11` |
 | the user already set `GDK_BACKEND` themselves | left untouched |
 | no `DISPLAY`, but a `WAYLAND_DISPLAY` | `wayland` |
 | anything else (including GNOME Wayland) | `x11` |
 
-The pure decision function is unit tested (`cargo test --bin ai-usage-sidebar`).
+The pure decision function is unit tested (`cargo test --bin islita`).
 
 ### Native layer-shell docking (`window/linux.rs`)
 
@@ -62,7 +62,7 @@ is missing, too old or the compositor has no `zwlr_layer_shell_v1`, it
 **falls back to XWayland**: by setting `GDK_BACKEND=x11` when GTK is not yet
 initialised, otherwise by `exec()`ing the same binary again with
 `GDK_BACKEND=x11` (GTK cannot change display after `gtk_init`;
-`AI_USAGE_SIDEBAR_BACKEND_REEXEC=1` guards against a restart loop). A pure
+`ISLITA_BACKEND_REEXEC=1` guards against a restart loop). A pure
 Wayland session without `DISPLAY` has nothing to fall back to: the failure is
 logged and the app starts anyway as an ordinary Wayland window that the
 compositor places, exactly as before layer-shell existed.
@@ -95,8 +95,8 @@ Once active (`window::layer_shell_active()`):
   own, so `outer_position()` is meaningless and a drift check could only
   re-place the bar in a loop. Settings changes and relayouts still place it.
 
-Env vars: `AI_USAGE_SIDEBAR_BACKEND` (`wayland` | `x11`), `GDK_BACKEND`,
-`AI_USAGE_SIDEBAR_BACKEND_REEXEC` (internal marker).
+Env vars: `ISLITA_BACKEND` (`wayland` | `x11`), `GDK_BACKEND`,
+`ISLITA_BACKEND_REEXEC` (internal marker).
 
 `window::backend_name()` reports what is actually in use and it ends up in
 `AppInfo.backend` in the dashboard's *About* section.
@@ -357,7 +357,7 @@ and whatever fails to parse or to register is reported through the
 **Where this works.** The plugin uses `global-hotkey`, which grabs keys with
 `XGrabKey` on X11, `RegisterHotKey` on Windows and a Carbon event handler on
 macOS. Linux runs on XWayland by default, so the X11 path applies and the
-shortcut works. On a **native Wayland session** (`AI_USAGE_SIDEBAR_BACKEND=wayland`)
+shortcut works. On a **native Wayland session** (`ISLITA_BACKEND=wayland`)
 there is no protocol that lets an application grab a global key: some
 compositors expose `org.freedesktop.portal.GlobalShortcuts`, several do not,
 and the plugin does not use the portal. Treat global shortcuts as an X11
@@ -409,11 +409,18 @@ explicitly hidden from the tray hidden.
 * **GNOME needs the AppIndicator extension** for the tray icon to appear at all.
 * **`alwaysOnTop` fights full-screen windows.** Most WMs put full-screen windows
   above everything; that is intentional and not worked around.
-* **Wayland mode (`AI_USAGE_SIDEBAR_BACKEND=wayland`)** docks natively through
+* **Wayland mode (`ISLITA_BACKEND=wayland`)** docks natively through
   layer-shell where `zwlr_layer_shell_v1` and `libgtk-layer-shell.so.0` are
   both present (wlroots: Sway/Hyprland; KWin). Everywhere else it falls back
   to XWayland, or — with no X display at all — to a floating window at a
   compositor-chosen position, which is only useful for debugging rendering.
+* **Cloud mail needs an OS secret store.** Gmail/Outlook tokens and IMAP app
+  passwords are stored through `keyring`: Credential Manager on Windows, the
+  login Keychain on macOS, Secret Service (GNOME Keyring / KWallet) on Linux.
+  A headless Linux session without a Secret Service reports a keychain error
+  instead of writing the secret to disk. macOS may show a Keychain permission
+  prompt for the unsigned build; choose **Always Allow**. The account list
+  itself is not secret and lives in `cloud-accounts.json`.
 * **The layer-shell path has not been exercised on real hardware yet.** It was
   written and reviewed against `gtk-layer-shell.h`, but no wlroots or KWin
   session has run it. Unverified in particular: whether Tauri's overlays are

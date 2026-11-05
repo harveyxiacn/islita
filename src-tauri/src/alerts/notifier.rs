@@ -53,6 +53,7 @@ pub enum Level {
     Forecast,
     Budget,
     Summary,
+    Task,
     Test,
 }
 
@@ -274,13 +275,13 @@ pub async fn send_test(app: &AppHandle, channel: Channel, chinese: bool) -> Resu
     let alert = if chinese {
         Alert::new(
             Level::Test,
-            "AI Usage Sidebar 测试通知",
+            "Islita 测试通知",
             "如果你看到这条消息，通知渠道工作正常。",
         )
     } else {
         Alert::new(
             Level::Test,
-            "AI Usage Sidebar test notification",
+            "Islita test notification",
             "If you can read this, the notification channel works.",
         )
     };

@@ -1,10 +1,13 @@
-# AI Usage Sidebar
+# Islita
 
-> An always-on-top edge sidebar that shows your **Claude Code** and **OpenAI Codex**
-> (and, experimentally, GitHub Copilot and OpenRouter) rate-limit quotas at a glance — one ring per provider, a detail popover on hover,
-> and a dashboard with your local token-usage history.
+> A plugin-powered island at the top of your screen — **Claude Code** and
+> **OpenAI Codex** quotas, plus mail, calendar, notes, file drop, music and
+> task updates in one fluid capsule. Dock it to any screen edge if you prefer
+> the classic sidebar.
 
-[中文说明见下 ↓](#ai-使用量侧边栏)
+*Formerly **AI Usage Sidebar** — the old repository URL redirects here.*
+
+[中文说明见下 ↓](#chinese)
 
 ---
 
@@ -25,11 +28,15 @@ sub-views, the Settings cards) are not in them:
 
 ## What it is
 
-`AI Usage Sidebar` is a small desktop widget built with **Tauri 2 (Rust)** and
-**SvelteKit / Svelte 5**. It lives on the edge of your screen, above other windows,
-and answers one question without interrupting you: *how much of my Claude / Codex
-quota is left, and when does it reset?*
+`Islita` is a desktop island built with **Tauri 2 (Rust)** and
+**SvelteKit / Svelte 5**. It floats at the top centre of your screen, above
+other windows, and keeps what you check all day within reach without
+interrupting you: *how much of my Claude / Codex quota is left*, and *what else
+needs my attention* — mail, calendar, notes, files, music and finished tasks.
+The island is opt-in; without it the app is the original edge bar.
 
+* An optional **top-centre island** that idles as a single capsule, expands
+  into the provider row and a tool rail, and hosts ten built-in plugin panels.
 * One **progress ring per provider** (or one per window in `ringMode: "all"`).
 * Hovering a ring opens a **popover** with every rate-limit window — 5-hour,
   weekly, per-model — plus its reset time. The popover never steals keyboard focus.
@@ -48,6 +55,9 @@ quota is left, and when does it reset?*
 | | |
 |---|---|
 | Edge docking | Any of the four screen edges, positioned along it (start / centre / end) with a pixel offset, on any monitor. Top and bottom turn the bar into a horizontal strip |
+| Dynamic island | Opt-in (`island: true`): a rounded capsule at the top centre of the monitor. It idles as one summary ring, expands on hover/focus into the full row, and grows a plugin rail (providers, calendar reminders, mail, WeChat, completed tasks, sticky note, recent sessions, music + LRC, focus timer, file drop) plus animated panels. See [docs/ISLAND.md](docs/ISLAND.md) |
+| Island plugins | Ten built-in panels. Calendar imports a local `.ics` (with simple recurrence expansion); mail reads headers from a local `.eml`/Maildir folder or an opt-in cloud account; the Windows-only WeChat panel mirrors the visible conversation list read-only through UI Automation; music plays local audio with synced LRC lyrics; file drop copies regular files into a private dropbox. Local mail and a soon-starting event show a badge on the rail. Message bodies are never read and nothing is uploaded. |
+| Cloud mail (opt-in) | In the Mail panel's **Accounts** tab, connect Gmail or Outlook with OAuth, or any IMAP host with an app password. Requests read-only mail access and lists unread inbox headers only. Tokens and passwords stay in the OS keychain, never in settings; removing an account deletes them. OAuth uses your own Google/Microsoft client registration, explained in the setup form. |
 | Drag to move | Drag the bar anywhere: it snaps to the nearest screen edge of the monitor you drop it on and remembers its position along that edge |
 | Auto-hide | The bar collapses to a thin handle when you move the pointer away and expands on hover. The collapsed handle is segmented per provider and coloured by severity |
 | Labels | `labelContent`: the percentage, the reset countdown ("1h12") or both under each ring; `percentPosition` puts the percentage below the ring or in its centre instead of the provider logo |
@@ -66,7 +76,7 @@ quota is left, and when does it reset?*
 
 | | |
 |---|---|
-| Menu | Show/hide the bar, always-show toggle, refresh, open the dashboard or Settings, check for updates, pause polling, quit. On Linux the icon has a menu only (a left click is not delivered) |
+| Menu | Show/hide the bar, always-show toggle, refresh, pause polling, a **Monitored providers** check list (start/stop tracking one provider without opening Settings), open the dashboard or Settings, check for updates, quit. On Linux the icon has a menu only (a left click is not delivered) |
 | Usage lines | One line per provider and account at the top of the menu (`Claude · 5h 73% · resets in 51 min`), a tooltip naming the busiest window (not on Linux), and a severity dot on the icon (Windows / Linux) |
 | Percent mode | `trayDisplay: "percent"` puts the busiest window's number in the tray: the menu-bar title on macOS, drawn into the icon on Windows and Linux |
 | Presets and focus mode | A Presets submenu (four built-in presets plus your own) and a Focus submenu (1 hour, until tomorrow 08:00, until turned off) that silences every notification channel and can hide the bar |
@@ -100,10 +110,10 @@ quota is left, and when does it reset?*
 
 | | |
 |---|---|
-| Notifications | Optional, **off by default** (master switch `notifications`): a warning when a window crosses your editable warning / critical level (once per window, level and cycle), a heads-up when a window is on pace to run out early, 80 % / 100 % of your monthly budget *estimate*, and a Monday summary of last week. Focus mode silences everything |
+| Notifications | Optional, **off by default** (master switch `notifications`): a warning when a window crosses your editable warning / critical level (once per window, level and cycle), a heads-up when a window is on pace to run out early, 80 % / 100 % of your monthly budget *estimate*, a Monday summary of last week, and a "task finished" notice when a Claude Code or Codex turn completes in the local session logs (provider + project only). Focus mode silences everything |
 | Webhook | An optional second channel (generic JSON, ntfy or Slack-compatible; `https` only, the URL is never logged) and a "send test" button |
-| Status lines | `ai-usage-sidebar --print [--format json\|line\|statusline] [--provider ID]` prints your quotas from a snapshot file, for Claude Code's `statusLine`, tmux, polybar or waybar. [Details](docs/STATUSLINE.md) |
-| Providers | Claude Code and Codex (verified); GitHub Copilot and OpenRouter (experimental, never tested against a live account) |
+| Status lines | `islita --print [--format json\|line\|statusline] [--provider ID]` prints your quotas from a snapshot file, for Claude Code's `statusLine`, tmux, polybar or waybar. [Details](docs/STATUSLINE.md) |
+| Providers | Claude Code and Codex (verified); GitHub Copilot, OpenRouter and OpenCode Zen/Go (experimental, never tested against a live account) |
 | Multiple accounts | Track extra Claude Code and Codex logins (up to 6) next to the primary one: each has its own ring group, quota history and forecast. Quota only; see the note under *Providers* |
 
 ## Providers
@@ -120,6 +130,8 @@ quota is left, and when does it reset?*
 | GitHub Copilot | **experimental — never tested against a live account** | Free | monthly chat **+** completions counts (there is no premium pool to meter) |
 | GitHub Copilot | **experimental — never tested against a live account** | organisation-managed seat | GitHub reports no per-seat quota; the popover says so instead of showing 0 % |
 | OpenRouter | **experimental — not verified against a live account** | API key from an environment variable | "Credits" window from the key's limit, or the account balance when the key has none; opt-in, off by default |
+| OpenCode Go | **experimental — not verified against a live account** | Go subscription · API key saved in the OS keychain | 5-hour (`rolling`), weekly and 30-day (`monthly`) allowances; opt-in, off by default |
+| OpenCode Zen | **experimental — not verified against a live account** | pay-as-you-go · same key | no Go windows: the tightest monthly Console budget, shown as one "Zen budget" window |
 
 Window kinds are **detected from the API**, never assumed: a window is classified
 by its `limit_window_seconds` (≤ 6 h → 5-hour, ~7 d → weekly, anything else →
@@ -147,7 +159,7 @@ with links to the source lines it came from, is in
 and **Cursor** were researched and *not* implemented. Corrections from someone
 with a live Copilot account are very welcome. **OpenRouter** is experimental for the
 same reason (built from its public API reference, no key to test with); it is off
-until you enable it and reads its API key from an environment variable.
+until you enable it and reads its API key from an environment variable. **OpenCode** is experimental for the same reason: built from OpenCode's own usage code, with no live key to test. Paste a key from opencode.ai/auth in Settings → Providers; it goes to the OS keychain (`OPENCODE_API_KEY` is the headless fallback), so it never enters `settings.json`. Go keys show 5-hour, weekly and 30-day windows; a key without Go shows the tightest Zen monthly budget. A workspace id (`opencodeWorkspaceId`, or the whole Console URL) is optional but may be needed for a key that belongs to a workspace.
 
 ## How it reads your data
 
@@ -163,6 +175,7 @@ its documented API), and parses the session logs those CLIs leave on disk.
 | Codex | `~/.codex/auth.json` · override the directory with `CODEX_HOME` |
 | GitHub Copilot | `~/.config/github-copilot/apps.json` (older `hosts.json`), written by the Copilot editor plugins · `%LOCALAPPDATA%\github-copilot\` on Windows · `$XDG_CONFIG_HOME` is honoured. The GitHub CLI's token is deliberately **not** used. |
 | OpenRouter | no file: the API key is read from the environment variable named by `openrouterKeyEnv` (default `OPENROUTER_API_KEY`); the key itself is never stored |
+| OpenCode | no file: the key you paste in Settings → Providers is kept in the OS keychain (service `io.github.harveyxiacn.islita.opencode`, entry `api-key`); `OPENCODE_API_KEY` is read as a fallback |
 
 **Endpoints**
 
@@ -172,6 +185,7 @@ its documented API), and parses the session logs those CLIs leave on disk.
 | Codex | `GET https://chatgpt.com/backend-api/wham/usage`, `Authorization: Bearer …`, `ChatGPT-Account-Id: …` |
 | GitHub Copilot | `GET https://api.github.com/copilot_internal/user`, `Authorization: token …`, `X-Github-Api-Version: 2025-04-01` — the call the Copilot editor extensions make |
 | OpenRouter | `GET https://openrouter.ai/api/v1/key` (and `/api/v1/credits` for a key without a limit), `Authorization: Bearer …` |
+| OpenCode | `GET https://opencode.ai/zen/go/v1/usage` (5-hour / weekly / 30-day) and, with a workspace id, `GET https://opencode.ai/console/api/policies/current-budgets`; `Authorization: Bearer …`, `x-opencode-org-id` / `x-org-id` |
 
 **Local logs (token history, and a fallback when you are offline)**
 
@@ -181,13 +195,14 @@ its documented API), and parses the session logs those CLIs leave on disk.
 | Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, `~/.codex/archived_sessions/**` |
 | GitHub Copilot | none — no Copilot client is known to log token counts, so Copilot has no token history |
 | OpenRouter | none — it is an API gateway, so there is no token history |
+| OpenCode | none — this app does not read OpenCode's local session logs, so there is no token history |
 
 Only the primary Claude Code and Codex accounts are ingested; extra accounts are quota only.
 
 > **Privacy.** Your tokens never leave your machine except in the request to
-> Anthropic's, OpenAI's, GitHub's and OpenRouter's own endpoints — the same ones
-> `claude`, `codex` and the Copilot editor extensions already talk to, and only for
-> a provider you have switched on. There is no telemetry. The only other outbound
+> Anthropic's, OpenAI's, GitHub's, OpenRouter's and OpenCode's own endpoints — the
+> same ones `claude`, `codex` and the Copilot editor extensions already talk to,
+> and only for a provider you have switched on. There is no telemetry. The only other outbound
 > requests are the daily GitHub release check, the price-table check, a webhook you
 > configure yourself and an AI evaluation you send; Settings → Privacy & network
 > lists them all, and a settings switch turns off each automatic one. Session JSONL records are
@@ -202,7 +217,7 @@ Only the primary Claude Code and Codex accounts are ingested; extra accounts are
 >
 > Price checks are controlled separately from provider polling. With the
 > default empty **Pricing table URL**, the app checks the project's
-> [GitHub raw pricing.json](https://raw.githubusercontent.com/harveyxiacn/AI-usage-monitor-sidebar/main/pricing.json)
+> [GitHub raw pricing.json](https://raw.githubusercontent.com/harveyxiacn/islita/main/pricing.json)
 > source. A non-empty value selects a custom `https://` source. When
 > **Automatic price checks** is enabled, a check runs about 60 seconds after
 > startup and then once a day; it only reports that a newer source table is
@@ -211,18 +226,18 @@ Only the primary Claude Code and Codex accounts are ingested; extra accounts are
 ## Install
 
 > **Let your AI agent do it.** Tell Claude Code, Codex or any coding agent:
-> *"Install and set up AI Usage Sidebar by following
-> https://github.com/harveyxiacn/AI-usage-monitor-sidebar/blob/main/AGENTS.md"*.
+> *"Install and set up Islita by following
+> https://github.com/harveyxiacn/islita/blob/main/AGENTS.md"*.
 > [`AGENTS.md`](AGENTS.md) covers platform detection, download or source build,
 > verification, every setting and uninstalling.
 
 ### Releases
 
 Download the installer for your platform from the
-[latest release](https://github.com/harveyxiacn/AI-usage-monitor-sidebar/releases/latest):
+[latest release](https://github.com/harveyxiacn/islita/releases/latest):
 `.deb` / `.rpm` / `.AppImage` (Linux x86_64), `.dmg` (macOS, Apple Silicon and
 Intel), `-setup.exe` / `.msi` (Windows x64). These builds are unsigned: macOS
-needs `xattr -dr com.apple.quarantine "/Applications/AI Usage Sidebar.app"`,
+needs `xattr -dr com.apple.quarantine "/Applications/Islita.app"`,
 Windows shows a SmartScreen warning.
 
 ### Staying up to date
@@ -287,20 +302,20 @@ Useful environment variables:
 
 | Variable | Effect |
 |---|---|
-| `AI_USAGE_SIDEBAR_BACKEND=wayland` | Do **not** force XWayland (see below) |
-| `AI_USAGE_SIDEBAR_LOG=debug` | Verbose logging, including every window placement |
-| `AI_USAGE_SIDEBAR_DEVTOOLS=1` | Open the WebKit inspector in debug builds |
+| `ISLITA_BACKEND=wayland` | Do **not** force XWayland (see below) |
+| `ISLITA_LOG=debug` | Verbose logging, including every window placement |
+| `ISLITA_DEVTOOLS=1` | Open the WebKit inspector in debug builds |
 | `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | Point the app at non-default CLI directories |
 
 ## Platform notes
 
 * **Linux / GNOME Wayland (primary development target).** Wayland does not let a
   client position its own windows or keep them above others, so the app forces
-  `GDK_BACKEND=x11` (XWayland) unless you set `AI_USAGE_SIDEBAR_BACKEND=wayland`.
+  `GDK_BACKEND=x11` (XWayland) unless you set `ISLITA_BACKEND=wayland`.
   With the proprietary NVIDIA driver it also sets
   `WEBKIT_DISABLE_DMABUF_RENDERER=1`, without which WebKitGTK renders black.
 * **KDE / wlroots (Hyprland, Sway).** Native Wayland docking through the
-  `wlr-layer-shell` protocol is opt-in (`AI_USAGE_SIDEBAR_BACKEND=wayland`, needs
+  `wlr-layer-shell` protocol is opt-in (`ISLITA_BACKEND=wayland`, needs
   `gtk-layer-shell`) and falls back to XWayland by itself; it has not been run on a
   real wlroots or KDE session yet. Linux has no client-side blur on GNOME, so the
   glass surface is the webview's own translucent fill; under X11/XWayland KWin
@@ -324,7 +339,7 @@ Details, including the geometry maths and the hover state machine, are in
 ## Status lines and scripts
 
 Turn on *Settings -> Integrations -> Export snapshot file* and
-`ai-usage-sidebar --print [--format json|line|statusline]` prints your quotas
+`islita --print [--format json|line|statusline]` prints your quotas
 from the terminal (exit code 2 when the data is missing or stale). That makes
 them usable in Claude Code's `statusLine`, tmux, polybar or waybar — see
 [`docs/STATUSLINE.md`](docs/STATUSLINE.md). *Pause polling* lives in the same
@@ -375,7 +390,7 @@ repository, which you can host yourself:
 Rates are USD per 1M tokens. To follow this project's own list:
 
 ```
-https://raw.githubusercontent.com/harveyxiacn/AI-usage-monitor-sidebar/main/pricing.json
+https://raw.githubusercontent.com/harveyxiacn/islita/main/pricing.json
 ```
 
 The built-in defaults were checked against the [OpenAI pricing](https://developers.openai.com/api/docs/pricing),
@@ -388,9 +403,9 @@ The built-in defaults were checked against the [OpenAI pricing](https://develope
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
-| Settings | `~/.config/io.github.harveyxiacn.ai-usage-sidebar/settings.json` | `~/Library/Application Support/io.github.harveyxiacn.ai-usage-sidebar/settings.json` | `%APPDATA%\io.github.harveyxiacn.ai-usage-sidebar\settings.json` |
-| Database & cache | `~/.local/share/io.github.harveyxiacn.ai-usage-sidebar/usage.db` | `~/Library/Application Support/io.github.harveyxiacn.ai-usage-sidebar/usage.db` | `%LOCALAPPDATA%\io.github.harveyxiacn.ai-usage-sidebar\usage.db` (or `%APPDATA%\…` if an older version already created it there) |
-| Logs | `~/.local/share/io.github.harveyxiacn.ai-usage-sidebar/logs/` | `~/Library/Logs/io.github.harveyxiacn.ai-usage-sidebar/` | `%LOCALAPPDATA%\io.github.harveyxiacn.ai-usage-sidebar\logs\` |
+| Settings | `~/.config/io.github.harveyxiacn.islita/settings.json` | `~/Library/Application Support/io.github.harveyxiacn.islita/settings.json` | `%APPDATA%\io.github.harveyxiacn.islita\settings.json` |
+| Database & cache | `~/.local/share/io.github.harveyxiacn.islita/usage.db` | `~/Library/Application Support/io.github.harveyxiacn.islita/usage.db` | `%LOCALAPPDATA%\io.github.harveyxiacn.islita\usage.db` (or `%APPDATA%\…` if an older version already created it there) |
+| Logs | `~/.local/share/io.github.harveyxiacn.islita/logs/` | `~/Library/Logs/io.github.harveyxiacn.islita/` | `%LOCALAPPDATA%\io.github.harveyxiacn.islita\logs\` |
 
 Deleting `settings.json` resets the app to its defaults (right edge, vertically
 centred, always visible, dark theme). The settings folder also holds
@@ -404,13 +419,14 @@ exported), `alerts-state.json` (which alerts already fired) and, after a restore
 - [x] Blur behind the bar on KWin (X11 / XWayland)
 - [x] GitHub Copilot (experimental, unverified — see [docs/PROVIDERS.md](docs/PROVIDERS.md))
 - [x] OpenRouter (experimental, unverified)
+- [x] OpenCode Zen / Go (experimental, unverified)
 - [x] Multiple Claude Code / Codex accounts (quota only)
 - [x] Native CSV export and clipboard copy
 - [x] Per-project token breakdown
 - [x] Burn-rate forecast ("at this rate your weekly window runs out in …")
 - [x] Alerts: threshold, forecast, budget, weekly summary, webhook
 - [ ] Token history and budget alerts for extra accounts
-- [ ] Verify Copilot, OpenRouter and native Wayland on real accounts and hardware
+- [ ] Verify Copilot, OpenRouter, OpenCode and native Wayland on real accounts and hardware
 - [ ] Gemini CLI — blocked on its move to OS-keychain credential storage ([why](docs/PROVIDERS.md))
 - [ ] ~~Cursor~~ — not planned: ToS and endpoint stability ([why](docs/PROVIDERS.md))
 - [ ] A menu-bar-only mode on macOS (the tray can already show the percentage)
@@ -447,10 +463,14 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 
 ---
 
-# AI 使用量侧边栏
+<a id="chinese"></a>
+# Islita（灵动岛）
 
-> 一个常驻屏幕边缘、置顶显示的小挂件，一眼看清 **Claude Code** 与 **OpenAI Codex**
->（以及实验性的 GitHub Copilot 与 OpenRouter）的额度用量：每个服务一个进度环，悬停弹出详情，仪表盘里还有本地 token 使用历史。
+> 一个置顶在屏幕顶部中央的插件灵动岛：一眼看清 **Claude Code** 与 **OpenAI Codex**
+>（以及实验性的 GitHub Copilot 与 OpenRouter）的额度，也顺手处理邮件、日程、便利贴、
+> 文件中转、音乐和任务提醒；想贴边用时仍可切回经典侧边栏。
+
+*原名 **AI Usage Sidebar**，旧仓库地址会自动跳转到这里。*
 
 ## 截图
 
@@ -468,10 +488,12 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 
 ## 这是什么
 
-`AI Usage Sidebar` 用 **Tauri 2（Rust）** + **SvelteKit / Svelte 5** 编写，
-常驻屏幕边缘、置顶于其他窗口之上，只回答一个问题：*我的 Claude / Codex 额度
-还剩多少、什么时候重置？*
+`Islita` 用 **Tauri 2（Rust）** + **SvelteKit / Svelte 5** 编写，
+常驻屏幕顶部中央（也可贴靠任意边缘）、置顶于其他窗口之上，让你不被打断地看到两类信息：
+*我的 Claude / Codex 额度还剩多少、什么时候重置*，以及*还有什么需要我处理*——
+邮件、日程、便利贴、文件中转、音乐和已完成任务。灵动岛默认关闭，关闭时就是原来的贴边侧栏。
 
+* 可选的**顶部中央灵动岛**：空闲时是一个胶囊，展开后显示服务商圆环和插件栏，内置十个插件面板。
 * 每个服务一个**进度环**（`ringMode: "all"` 时每个限额窗口一个环）。
 * 悬停某个环会弹出**详情层**，列出全部限额窗口——5 小时、每周、按模型——以及各自的重置时间。弹层**不会抢走键盘焦点**。
 * **仪表盘**窗口提供设置，以及从各 CLI 本地会话日志解析出来的 **token 使用历史**，方便横向比较不同套餐与服务（并给出仅供参考的 API 等价费用估算）。
@@ -485,6 +507,9 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 | | |
 |---|---|
 | 边缘吸附 | 四条屏幕边缘任选，沿边缘对齐（起始/居中/末端）并可设像素偏移，可指定显示器；贴靠顶部或底部时侧栏会变成横条 |
+| 灵动岛 | 可选（`island: true`）：在显示器顶部中央显示圆角胶囊。空闲时只显示最忙服务商的一个摘要圆环，悬停或键盘聚焦后展开为完整一排，并出现插件栏（服务商、日历提醒、邮件、微信、已完成任务、便利贴、最近会话、音乐 + LRC、专注计时、文件中转站）与带过场动画的面板。详见 [docs/ISLAND.md](docs/ISLAND.md) |
+| 灵动岛插件 | 十个内置面板。日历导入本地 `.ics`（支持简单重复规则）；邮件可读取本地 `.eml`/Maildir 的邮件头，也可选择连接云端账户；微信面板（仅 Windows）通过 UI Automation 只读镜像当前可见的会话列表；音乐播放本地音频并显示 LRC 同步歌词；文件中转站把普通文件复制到本机私密目录。本地邮件和即将开始的日程会在插件栏显示角标。始终不读取正文，也不会上传任何内容。 |
+| 云端邮件（可选） | 在邮件面板的“云端账户”页，可以用 OAuth 连接 Gmail / Outlook，或使用应用专用密码连接任意 IMAP 服务器。只申请只读邮件权限，只列出收件箱未读邮件头。令牌和密码保存在系统钥匙串，不写入设置；移除账户时会一并删除。OAuth 使用你自己的 Google / Microsoft 客户端注册，设置表单内有步骤说明。 |
 | 拖拽移动 | 直接拖动侧栏：松手后吸附到所在显示器最近的一条边缘，并记住沿该边缘的位置 |
 | 自动隐藏 | 鼠标离开后收起为细条，悬停时自动展开；收起的把手按服务商分段，并按严重程度着色 |
 | 标签 | `labelContent`：圆环下显示百分比、重置倒计时（如“1h12”）或两者；`percentPosition` 可将百分比放在圆环下方，或放进圆心以替代服务商图标 |
@@ -503,7 +528,7 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 
 | | |
 |---|---|
-| 菜单 | 显示/隐藏侧栏、常驻显示开关、立即刷新、打开仪表盘或设置、检查更新、暂停轮询、退出。Linux 下图标只有菜单（左键点击不会送达应用） |
+| 菜单 | 显示/隐藏侧栏、常驻显示开关、立即刷新、暂停轮询、**监测的服务商**勾选列表（无需打开设置即可开始/停止监测）、打开仪表盘或设置、检查更新、退出。Linux 下图标只有菜单（左键点击不会送达应用） |
 | 用量行 | 菜单顶部按服务商与账号各一行（`Claude · 5h 73% · 51 分钟后重置`），提示文字给出最忙的窗口（Linux 上无），图标上带严重度圆点（Windows / Linux） |
 | 百分比模式 | `trayDisplay: "percent"` 把最忙窗口的数字放进托盘：macOS 为菜单栏标题，Windows 与 Linux 画入图标 |
 | 预设与专注模式 | “预设”子菜单（四个内置预设加你自己的）；“专注”子菜单（1 小时、到明天 08:00、直到手动关闭）会静默所有通知渠道，也可同时隐藏侧栏 |
@@ -537,10 +562,10 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 
 | | |
 |---|---|
-| 通知 | 可选，**默认关闭**（总开关 `notifications`）：窗口越过可编辑的警告/严重阈值时提醒（每个窗口、级别与周期一次）、预计提前用尽时提醒、月度预算*估算*达 80% / 100% 时提醒，以及每周一的上周摘要。专注模式会静默全部渠道 |
+| 通知 | 可选，**默认关闭**（总开关 `notifications`）：窗口越过可编辑的警告/严重阈值时提醒（每个窗口、级别与周期一次）、预计提前用尽时提醒、月度预算*估算*达 80% / 100% 时提醒，每周一的上周摘要，以及 Claude Code / Codex 在本地会话日志中完成一轮任务时的“任务完成”提醒（只含服务商与项目）。专注模式会静默全部渠道 |
 | Webhook | 可选的第二渠道（通用 JSON、ntfy 或兼容 Slack；仅 `https`，URL 不写入日志），并带“发送测试” |
-| 状态栏 | `ai-usage-sidebar --print [--format json\|line\|statusline] [--provider ID]` 从快照文件输出额度，用于 Claude Code 的 `statusLine`、tmux、polybar、waybar。[详情](docs/STATUSLINE.md) |
-| 服务商 | Claude Code 与 Codex（已验证）；GitHub Copilot 与 OpenRouter（实验性，从未在真实账号上测试） |
+| 状态栏 | `islita --print [--format json\|line\|statusline] [--provider ID]` 从快照文件输出额度，用于 Claude Code 的 `statusLine`、tmux、polybar、waybar。[详情](docs/STATUSLINE.md) |
+| 服务商 | Claude Code 与 Codex（已验证）；GitHub Copilot、OpenRouter 与 OpenCode Zen/Go（实验性，从未在真实账号上测试） |
 | 多账号 | 在主账号之外再跟踪最多 6 个 Claude Code / Codex 登录：各有自己的圆环组、配额历史与预测。仅配额，见“支持的服务与套餐”下的说明 |
 
 ## 支持的服务与套餐
@@ -557,6 +582,8 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 | GitHub Copilot | **实验性 —— 从未在真实账号上验证** | Free | 每月 chat **+** 代码补全次数（免费套餐没有 premium 额度池） |
 | GitHub Copilot | **实验性 —— 从未在真实账号上验证** | 组织分配的席位 | GitHub 不返回该席位的个人额度，弹窗会如实说明，而不是显示 0% |
 | OpenRouter | **实验性 —— 未在真实账号上验证** | 环境变量中的 API Key | 按密钥额度上限显示“Credits”窗口；无上限时显示账户余额；需手动开启，默认关闭 |
+| OpenCode Go | **实验性 —— 未在真实账号上验证** | Go 订阅 · API 密钥保存在系统钥匙串 | 5 小时（`rolling`）、每周与 30 天（`monthly`）额度；需手动开启，默认关闭 |
+| OpenCode Zen | **实验性 —— 未在真实账号上验证** | 按量付费 · 同一密钥 | 没有 Go 窗口时，显示 Console 中额度最紧的月度预算（“Zen budget”窗口） |
 
 窗口类型一律**由 API 返回值判断**，不做假设：按 `limit_window_seconds` 归类
 （≤ 6 小时 → 5 小时窗口，约 7 天 → 每周窗口，其余 → 其他）。每周窗口也可能是
@@ -574,7 +601,7 @@ GitHub Copilot 则只依据其他开源项目公开的源码，以及 GitHub 自
 *实验性*，其数值可能有误，也可能随时失效。所有结论及其源码出处链接都记录在
 [docs/PROVIDERS.md](docs/PROVIDERS.md)，其中也说明了 **Gemini CLI** 与
 **Cursor** 为什么调研后*没有*实现。欢迎有 Copilot 账号的朋友帮忙纠正。**OpenRouter** 同样是实验性的（依据其公开 API 文档实现，作者没有可测试的密钥），
-需手动开启，API 密钥从环境变量读取。
+需手动开启，API 密钥从环境变量读取。**OpenCode** 同样标记为实验性：依据 OpenCode 自身的用量代码实现，作者没有可测试的密钥。在「设置 → 服务商」粘贴 opencode.ai/auth 的密钥即可，密钥保存在系统钥匙串（无界面环境回退到 `OPENCODE_API_KEY`），不会进入 `settings.json`。Go 密钥显示 5 小时、每周与 30 天窗口；没有 Go 时显示最紧的 Zen 月度预算。可选填工作区 ID（`opencodeWorkspaceId`，或整条 Console 地址），属于工作区的密钥可能需要它。
 
 ## 数据从哪里来
 
@@ -589,6 +616,7 @@ GitHub Copilot 则只依据其他开源项目公开的源码，以及 GitHub 自
 | Codex | `~/.codex/auth.json` · 可用 `CODEX_HOME` 覆盖目录 |
 | GitHub Copilot | `~/.config/github-copilot/apps.json`（旧版为 `hosts.json`），由 Copilot 编辑器插件写入 · Windows 为 `%LOCALAPPDATA%\github-copilot\` · 支持 `$XDG_CONFIG_HOME`。**不会**使用 GitHub CLI 的令牌。 |
 | OpenRouter | 无文件：API 密钥从 `openrouterKeyEnv`（默认 `OPENROUTER_API_KEY`）所指定的环境变量读取，密钥本身从不保存 |
+| OpenCode | 无文件：在「设置 → 服务商」粘贴的密钥保存在系统钥匙串（服务 `io.github.harveyxiacn.islita.opencode`，条目 `api-key`）；也可回退读取 `OPENCODE_API_KEY` |
 
 **接口**
 
@@ -598,6 +626,7 @@ GitHub Copilot 则只依据其他开源项目公开的源码，以及 GitHub 自
 | Codex | `GET https://chatgpt.com/backend-api/wham/usage`，请求头 `Authorization: Bearer …`、`ChatGPT-Account-Id: …` |
 | GitHub Copilot | `GET https://api.github.com/copilot_internal/user`，请求头 `Authorization: token …`、`X-Github-Api-Version: 2025-04-01` —— 与 Copilot 编辑器插件所调用的一致 |
 | OpenRouter | `GET https://openrouter.ai/api/v1/key`（无额度上限的密钥还会请求 `/api/v1/credits`），`Authorization: Bearer …` |
+| OpenCode | `GET https://opencode.ai/zen/go/v1/usage`（5 小时 / 每周 / 30 天）；填写工作区 ID 时还会请求 `GET https://opencode.ai/console/api/policies/current-budgets`；`Authorization: Bearer …`、`x-opencode-org-id` / `x-org-id` |
 
 **本地日志（token 历史；离线时也作为额度兜底）**
 
@@ -607,10 +636,11 @@ GitHub Copilot 则只依据其他开源项目公开的源码，以及 GitHub 自
 | Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`、`~/.codex/archived_sessions/**` |
 | GitHub Copilot | 无 —— 目前没有任何 Copilot 客户端会把 token 计数写到本地，因此 Copilot 没有 token 历史 |
 | OpenRouter | 无 —— 它是 API 网关，没有 token 历史 |
+| OpenCode | 无 —— 本应用不读取 OpenCode 的本地会话日志，因此没有 token 历史 |
 
 只有主账号的 Claude Code 与 Codex 会被解析日志；额外账号只有配额。
 
-> **隐私说明**：除了发往 Anthropic、OpenAI、GitHub 与 OpenRouter 自家接口（也就是 `claude`、
+> **隐私说明**：除了发往 Anthropic、OpenAI、GitHub、OpenRouter 与 OpenCode 自家接口（也就是 `claude`、
 > `codex` 和 Copilot 编辑器插件本来就会访问的那几个，且仅限你已启用的服务商）之外，
 > 登录凭据不会离开本机。没有遥测或统计上报。其余外发请求只有：每日一次的 GitHub 新版本检查、价格表检查、
 > 你自己配置的 Webhook，以及你主动发送的 AI 评测；“设置 → 隐私与网络”会全部列出，自动发生的几项都有开关可关。会话 JSONL 在本机解析，索引保留用量、标题、轮次、
@@ -620,23 +650,23 @@ GitHub Copilot 则只依据其他开源项目公开的源码，以及 GitHub 自
 > 设置与统计口径见[会话分析说明](docs/SESSIONS.md)。
 >
 > 价格检查与服务商轮询相互独立。**价格表地址**为空时，应用检查项目维护的
-> [GitHub raw pricing.json](https://raw.githubusercontent.com/harveyxiacn/AI-usage-monitor-sidebar/main/pricing.json)；
+> [GitHub raw pricing.json](https://raw.githubusercontent.com/harveyxiacn/islita/main/pricing.json)；
 > 填入非空的 `https://` 地址时，则改用自定义来源。开启**自动检查价格**后，应用会在启动约
 > 60 秒后、以及此后每天检查一次；检查只会提示来源表有更新，不会自行改变当前已应用的价格表。
 
 ## 安装
 
 > **让 AI agent 代劳。** 对 Claude Code、Codex 或任意编码 agent 说：
-> *“按照 https://github.com/harveyxiacn/AI-usage-monitor-sidebar/blob/main/AGENTS.md
-> 安装并设置 AI Usage Sidebar”*。
+> *“按照 https://github.com/harveyxiacn/islita/blob/main/AGENTS.md
+> 安装并设置 Islita”*。
 > [`AGENTS.md`](AGENTS.md) 涵盖平台识别、下载或源码构建、启动验证、全部设置项与卸载。
 
 ### 下载安装包
 
-从[最新发布](https://github.com/harveyxiacn/AI-usage-monitor-sidebar/releases/latest)下载对应平台的安装包：
+从[最新发布](https://github.com/harveyxiacn/islita/releases/latest)下载对应平台的安装包：
 Linux x86_64 的 `.deb` / `.rpm` / `.AppImage`，macOS 的 `.dmg`（Apple Silicon 与 Intel 各一个），
 Windows x64 的 `-setup.exe` / `.msi`。这些构建尚未签名：macOS 需执行
-`xattr -dr com.apple.quarantine "/Applications/AI Usage Sidebar.app"`，Windows 会出现 SmartScreen 提示。
+`xattr -dr com.apple.quarantine "/Applications/Islita.app"`，Windows 会出现 SmartScreen 提示。
 
 ### 保持更新
 
@@ -696,19 +726,19 @@ pnpm tauri build   # 产物在 src-tauri/target/release/bundle/
 
 | 变量 | 作用 |
 |---|---|
-| `AI_USAGE_SIDEBAR_BACKEND=wayland` | **不**强制走 XWayland（见下） |
-| `AI_USAGE_SIDEBAR_LOG=debug` | 输出详细日志，含每一次窗口定位 |
-| `AI_USAGE_SIDEBAR_DEVTOOLS=1` | debug 构建下打开 WebKit 调试器 |
+| `ISLITA_BACKEND=wayland` | **不**强制走 XWayland（见下） |
+| `ISLITA_LOG=debug` | 输出详细日志，含每一次窗口定位 |
+| `ISLITA_DEVTOOLS=1` | debug 构建下打开 WebKit 调试器 |
 | `CLAUDE_CONFIG_DIR`、`CODEX_HOME` | 指定非默认的 CLI 配置目录 |
 
 ## 平台说明
 
 * **Linux / GNOME Wayland（主要开发环境）**：Wayland 不允许客户端自行定位窗口或强制置顶，
   因此程序默认强制 `GDK_BACKEND=x11`（走 XWayland），除非设置
-  `AI_USAGE_SIDEBAR_BACKEND=wayland`。在 NVIDIA 闭源驱动下还会设置
+  `ISLITA_BACKEND=wayland`。在 NVIDIA 闭源驱动下还会设置
   `WEBKIT_DISABLE_DMABUF_RENDERER=1`，否则 WebKitGTK 会渲染成黑屏。
 * **KDE / wlroots（Hyprland、Sway）**：通过 `wlr-layer-shell` 协议的原生 Wayland 停靠为可选项
-  （`AI_USAGE_SIDEBAR_BACKEND=wayland`，需安装 `gtk-layer-shell`），不可用时会自动退回 XWayland；
+  （`ISLITA_BACKEND=wayland`，需安装 `gtk-layer-shell`），不可用时会自动退回 XWayland；
   尚未在真实的 wlroots 或 KDE 会话上运行过。GNOME 下没有客户端模糊接口，玻璃质感只能由网页层自行半透明绘制；
   在 X11/XWayland 下 KWin 会对侧栏背后做模糊。
 * **Linux 托盘与快捷键**：托盘图标只有菜单（Linux 上收不到左键点击；GNOME 需要 AppIndicator 扩展）。
@@ -724,7 +754,7 @@ pnpm tauri build   # 产物在 src-tauri/target/release/bundle/
 ## 状态栏与脚本
 
 在 *设置 -> 集成* 中开启“导出快照文件”后，可以在终端运行
-`ai-usage-sidebar --print [--format json|line|statusline]` 输出当前额度
+`islita --print [--format json|line|statusline]` 输出当前额度
 （数据缺失或过期时退出码为 2），用于 Claude Code 的 `statusLine`、tmux、
 polybar、waybar，详见 [`docs/STATUSLINE.md`](docs/STATUSLINE.md)。同一张卡片里还有“暂停轮询”；
 设置与历史数据的备份 / 恢复在“备份与历史”卡片中。
@@ -763,7 +793,7 @@ polybar、waybar，详见 [`docs/STATUSLINE.md`](docs/STATUSLINE.md)。同一张
 价格单位是每百万 token 的美元数。想直接跟随本项目维护的价目表：
 
 ```
-https://raw.githubusercontent.com/harveyxiacn/AI-usage-monitor-sidebar/main/pricing.json
+https://raw.githubusercontent.com/harveyxiacn/islita/main/pricing.json
 ```
 
 内置默认价格依据[OpenAI 总价格页](https://developers.openai.com/api/docs/pricing)、
@@ -776,9 +806,9 @@ https://raw.githubusercontent.com/harveyxiacn/AI-usage-monitor-sidebar/main/pric
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
-| 设置 | `~/.config/io.github.harveyxiacn.ai-usage-sidebar/settings.json` | `~/Library/Application Support/io.github.harveyxiacn.ai-usage-sidebar/settings.json` | `%APPDATA%\io.github.harveyxiacn.ai-usage-sidebar\settings.json` |
-| 数据库与缓存 | `~/.local/share/io.github.harveyxiacn.ai-usage-sidebar/usage.db` | `~/Library/Application Support/io.github.harveyxiacn.ai-usage-sidebar/usage.db` | `%LOCALAPPDATA%\io.github.harveyxiacn.ai-usage-sidebar\usage.db`（旧版本已在 `%APPDATA%\…` 创建过时沿用那里） |
-| 日志 | `~/.local/share/io.github.harveyxiacn.ai-usage-sidebar/logs/` | `~/Library/Logs/io.github.harveyxiacn.ai-usage-sidebar/` | `%LOCALAPPDATA%\io.github.harveyxiacn.ai-usage-sidebar\logs\` |
+| 设置 | `~/.config/io.github.harveyxiacn.islita/settings.json` | `~/Library/Application Support/io.github.harveyxiacn.islita/settings.json` | `%APPDATA%\io.github.harveyxiacn.islita\settings.json` |
+| 数据库与缓存 | `~/.local/share/io.github.harveyxiacn.islita/usage.db` | `~/Library/Application Support/io.github.harveyxiacn.islita/usage.db` | `%LOCALAPPDATA%\io.github.harveyxiacn.islita\usage.db`（旧版本已在 `%APPDATA%\…` 创建过时沿用那里） |
+| 日志 | `~/.local/share/io.github.harveyxiacn.islita/logs/` | `~/Library/Logs/io.github.harveyxiacn.islita/` | `%LOCALAPPDATA%\io.github.harveyxiacn.islita\logs\` |
 
 删除 `settings.json` 即可恢复默认（右边缘、垂直居中、常驻显示、深色主题）。设置目录里还有 `settings.history.json`（撤销记录）；
 数据目录里有 `snapshot.json`（开启导出时）、`alerts-state.json`（记录哪些提醒已经触发过），恢复备份后还会有 `pre-restore/`。
@@ -790,13 +820,14 @@ https://raw.githubusercontent.com/harveyxiacn/AI-usage-monitor-sidebar/main/pric
 - [x] KWin 下的背景模糊（X11 / XWayland）
 - [x] GitHub Copilot（实验性，未在真实账号上验证，详见 [docs/PROVIDERS.md](docs/PROVIDERS.md)）
 - [x] OpenRouter（实验性，未验证）
+- [x] OpenCode Zen / Go（实验性，未验证）
 - [x] 多个 Claude Code / Codex 账号（仅配额）
 - [x] 原生 CSV 导出与剪贴板复制
 - [x] 按项目统计 token
 - [x] 消耗速率预测（“按此速度，你的每周额度将在 …… 用尽”）
 - [x] 提醒：阈值、预测、预算、每周摘要、Webhook
 - [ ] 额外账号的 token 历史与预算提醒
-- [ ] 在真实账号与硬件上验证 Copilot、OpenRouter 与原生 Wayland
+- [ ] 在真实账号与硬件上验证 Copilot、OpenRouter、OpenCode 与原生 Wayland
 - [ ] Gemini CLI —— 其凭据已迁入系统钥匙串，暂时受阻（[原因](docs/PROVIDERS.md)）
 - [ ] ~~Cursor~~ —— 不计划支持：服务条款与接口稳定性（[原因](docs/PROVIDERS.md)）
 - [ ] 仅菜单栏的 macOS 模式（托盘现在已能显示百分比）

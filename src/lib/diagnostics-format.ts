@@ -7,7 +7,7 @@ import type { Diagnostics } from './types';
 
 export function formatDiagnostics(d: Diagnostics): string {
   const lines: string[] = [];
-  lines.push(`AI Usage Sidebar ${d.appVersion}`);
+  lines.push(`Islita ${d.appVersion}`);
   lines.push(`OS: ${d.os} ${d.arch}`);
   lines.push(`Display backend: ${d.backend}${d.sessionType ? ` (session: ${d.sessionType})` : ''}`);
   lines.push('');

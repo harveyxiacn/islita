@@ -12,7 +12,7 @@ pub fn tempdir() -> PathBuf {
         .map(|d| d.as_nanos())
         .unwrap_or_default();
     let dir = std::env::temp_dir().join(format!(
-        "ai-usage-sidebar-test-{}-{}-{}",
+        "islita-test-{}-{}-{}",
         std::process::id(),
         nanos,
         COUNTER.fetch_add(1, Ordering::Relaxed)

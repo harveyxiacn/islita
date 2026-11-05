@@ -1,4 +1,4 @@
-import type { AnalysisSettings, EvaluationPreview, EvaluationReport, RequirementAssessment, SessionDetail, SessionListQuery, SessionMessage, SessionSummary } from './session-types';
+import type { AnalysisSettings, EvaluationPreview, EvaluationReport, RequirementAssessment, SessionDetail, SessionListQuery, SessionMessage, SessionSummary, TaskCompletion } from './session-types';
 import { buildInsights } from './session-insights';
 import { analysisDefaults, previewBudget, sessionIdentity } from './sessions';
 
@@ -39,6 +39,17 @@ export async function sessionMockInvoke(cmd: string, args: Record<string, unknow
         && (!q.search || `${r.title} ${r.sessionId} ${r.project}`.toLowerCase().includes(q.search.toLowerCase())));
       filtered.sort((a, b) => q.sort === 'tokens' ? b.totalTokens - a.totalTokens : q.sort === 'title' ? a.title.localeCompare(b.title) : b.lastTs.localeCompare(a.lastTs));
       return { rows: filtered.slice(offset, offset + limit), total: filtered.length, offset, limit };
+    }
+    case 'list_task_completions': {
+      const since = Number(args.sinceMs ?? now - 24 * 3600000);
+      const limit = Number(args.limit ?? 5);
+      const tasks: TaskCompletion[] = rows
+        .filter(row => !row.parentSessionId)
+        .map(row => ({ provider: row.provider, sessionId: row.sessionId, title: summary(row).title, project: row.project, finishedAt: Date.parse(row.lastTs) }))
+        .filter(task => task.finishedAt > since)
+        .sort((a, b) => b.finishedAt - a.finishedAt)
+        .slice(0, limit);
+      return tasks;
     }
     case 'get_session_insights': {
       const q = (args.query ?? {}) as SessionListQuery;

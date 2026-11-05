@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
-pub const FOLDER_PREFIX: &str = "ai-usage-sidebar-backup-";
+pub const FOLDER_PREFIX: &str = "islita-backup-";
 pub const MANIFEST: &str = "backup.json";
 pub const DB_FILE: &str = "usage.db";
 pub const SETTINGS_FILE: &str = "settings.json";
@@ -57,7 +57,7 @@ fn sql_literal(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "''"))
 }
 
-/// Create `<dest_root>/ai-usage-sidebar-backup-<stamp>/` with the settings
+/// Create `<dest_root>/islita-backup-<stamp>/` with the settings
 /// file, a database copy and a manifest. Returns that folder.
 pub fn create_backup(
     config_dir: &Path,
@@ -135,7 +135,7 @@ fn check_database(path: &Path) -> Result<i64> {
         |r| r.get(0),
     )?;
     if tables != 3 {
-        bail!("this is not an AI Usage Sidebar database");
+        bail!("this is not an Islita database");
     }
     let version = read_schema_version(&conn).context("the database has no schema version")?;
     if version > SCHEMA_VERSION {
@@ -458,7 +458,7 @@ mod tests {
         let (config, data, db) = fixture("en");
         let root = tempdir();
         let dir = backup_of(&config, &db, &root);
-        assert!(dir.ends_with("ai-usage-sidebar-backup-20261002-101500"));
+        assert!(dir.ends_with("islita-backup-20261002-101500"));
         for f in [DB_FILE, SETTINGS_FILE, MANIFEST] {
             assert!(dir.join(f).is_file(), "{f}");
         }
@@ -510,7 +510,7 @@ mod tests {
             .execute_batch("CREATE TABLE t(x)")
             .unwrap();
         let err = validate_backup(&other).unwrap_err().to_string();
-        assert!(err.contains("not an AI Usage Sidebar database"), "{err}");
+        assert!(err.contains("not an Islita database"), "{err}");
 
         // a database from a newer app
         let newer = backup_of(&config, &db, &root);

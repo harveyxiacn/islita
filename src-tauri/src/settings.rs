@@ -191,6 +191,7 @@ pub fn clamp(mut s: Settings) -> Settings {
     s.scale = clamp_f64(s.scale, 0.75, 1.5, 1.0);
     s.refresh_interval_sec = s.refresh_interval_sec.max(15);
     s.collapsed_width = s.collapsed_width.clamp(2, 24);
+    s.island_margin = s.island_margin.min(64);
     s.auto_hide_delay_ms = s.auto_hide_delay_ms.min(600_000);
     s.popover_timeout_sec = s.popover_timeout_sec.min(600);
     // 0 = off, -1 = until turned off, otherwise an epoch-ms deadline.
@@ -207,6 +208,9 @@ pub fn clamp(mut s: Settings) -> Settings {
     if !crate::commands::providers::openrouter::is_valid_key_env(&s.openrouter_key_env) {
         s.openrouter_key_env = Settings::default().openrouter_key_env;
     }
+    // Free text: the provider extracts the id from a pasted Console URL and
+    // ignores anything that is not `[A-Za-z0-9_-]`.
+    s.opencode_workspace_id = s.opencode_workspace_id.trim().chars().take(200).collect();
     s.custom_presets = clamp_presets(std::mem::take(&mut s.custom_presets));
     s.accounts = clamp_accounts(std::mem::take(&mut s.accounts));
 
@@ -246,6 +250,7 @@ pub fn clamp(mut s: Settings) -> Settings {
     s.colors.codex = hex_or(&s.colors.codex, &dc.codex);
     s.colors.copilot = hex_or(&s.colors.copilot, &dc.copilot);
     s.colors.openrouter = hex_or(&s.colors.openrouter, &dc.openrouter);
+    s.colors.opencode = hex_or(&s.colors.opencode, &dc.opencode);
     s.colors.warn = hex_or(&s.colors.warn, &dc.warn);
     s.colors.critical = hex_or(&s.colors.critical, &dc.critical);
     s.colors.surface = hex_or(&s.colors.surface, "");
@@ -690,6 +695,29 @@ mod tests {
         assert_eq!(
             merge(&base, &json!({"openrouterKeyEnv": "sk-or-v1-abc"})).openrouter_key_env,
             "OPENROUTER_API_KEY"
+        );
+    }
+
+    #[test]
+    fn opencode_is_registered_off_and_keeps_a_bare_or_url_workspace_id() {
+        let base = Settings::default();
+        assert!(
+            !base.providers["opencode"].enabled,
+            "experimental: opt-in only"
+        );
+        assert_eq!(base.providers["opencode"].order, 4);
+        assert_eq!(
+            merge(&base, &json!({"opencodeWorkspaceId": "  wrk_anomaly  "})).opencode_workspace_id,
+            "wrk_anomaly"
+        );
+        // the provider extracts the id; the settings layer only trims and caps
+        assert_eq!(
+            merge(
+                &base,
+                &json!({"opencodeWorkspaceId": "https://opencode.ai/console/wrk_anomaly/go"})
+            )
+            .opencode_workspace_id,
+            "https://opencode.ai/console/wrk_anomaly/go"
         );
     }
 

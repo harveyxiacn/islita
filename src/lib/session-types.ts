@@ -53,6 +53,19 @@ export interface EvaluationReport {
   cached: boolean;
 }
 
+/**
+ * One finished main-session turn, used by the tasks plugin and its notice.
+ * The backend deliberately fills `title`/`project` only; no prompt or reply
+ * text is part of this shape.
+ */
+export interface TaskCompletion {
+  provider: string;
+  sessionId: string;
+  title: string;
+  project: string;
+  finishedAt: number;
+}
+
 /** One session reduced to the metrics the Insights view plots (no content). */
 export interface InsightSession {
   provider: string; sessionId: string; title: string; project: string; lastTs: string;

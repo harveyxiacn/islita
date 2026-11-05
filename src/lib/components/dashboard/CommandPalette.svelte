@@ -67,7 +67,7 @@
       groupByModel: true,
       provider: null,
     });
-    const saved = await exportUsageCsv(historyCsv(result.rows), `ai-usage-${localDateInput(from)}-${localDateInput(to)}.csv`);
+    const saved = await exportUsageCsv(historyCsv(result.rows), `islita-${localDateInput(from)}-${localDateInput(to)}.csv`);
     return saved ? t('palette.done.csv', { path: saved }) : null;
   }
 

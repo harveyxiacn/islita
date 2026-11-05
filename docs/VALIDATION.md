@@ -44,12 +44,12 @@ from a normal checkout with the checked-in lockfiles.
 ### v0.5.0 release evidence
 
 The release source is `f5f736fd48860b590fc4337d69262055808cf443`, pushed to
-`main` and referenced by the annotated `v0.5.0` tag. [CI run 36440309118](https://github.com/harveyxiacn/AI-usage-monitor-sidebar/actions/runs/36440309118)
+`main` and referenced by the annotated `v0.5.0` tag. [CI run 36440309118](https://github.com/harveyxiacn/islita/actions/runs/36440309118)
 passed on Windows, macOS and Ubuntu, including the separate native Linux startup
-smoke test. [Release run 36441985420](https://github.com/harveyxiacn/AI-usage-monitor-sidebar/actions/runs/36441985420)
+smoke test. [Release run 36441985420](https://github.com/harveyxiacn/islita/actions/runs/36441985420)
 passed for Windows x64, Linux x64 and both macOS architectures.
 
-[v0.5.0](https://github.com/harveyxiacn/AI-usage-monitor-sidebar/releases/tag/v0.5.0)
+[v0.5.0](https://github.com/harveyxiacn/islita/releases/tag/v0.5.0)
 was published as the latest stable release on 2026-09-29 UTC. Verification
 downloaded all 17 assets (147,215,566 bytes) and matched their sizes and SHA-256
 digests against GitHub's metadata. The seven installer variants are Windows

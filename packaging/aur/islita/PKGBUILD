@@ -11,24 +11,24 @@
 # Before publishing: bump pkgver, run `updpkgsums`, then
 # `makepkg --printsrcinfo > .SRCINFO`.
 
-pkgname=ai-usage-sidebar
+pkgname=islita
 pkgver=0.2.0
 pkgrel=1
-pkgdesc='Always-on-top edge sidebar showing Claude Code / Codex rate-limit quotas and token usage history'
+pkgdesc='Plugin island for the desktop with AI quotas, mail, calendar, notes, files, music and tasks'
 arch=('x86_64' 'aarch64')
-url='https://github.com/harveyxiacn/AI-usage-monitor-sidebar'
+url='https://github.com/harveyxiacn/islita'
 license=('MIT')
 depends=('webkit2gtk-4.1' 'libayatana-appindicator' 'librsvg' 'gtk3')
 makedepends=('rust' 'nodejs' 'pnpm')
 optdepends=(
   'gnome-shell-extension-appindicator: tray icon on GNOME'
-  'gtk-layer-shell: native Wayland docking (AI_USAGE_SIDEBAR_BACKEND=wayland)'
+  'gtk-layer-shell: native Wayland docking (ISLITA_BACKEND=wayland)'
 )
 conflicts=("$pkgname-bin")
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('dd903b15702c34f8884bda1d287b316ece7c8ad359799f46f1702350c4fc32d0')
 
-_srcdir="AI-usage-monitor-sidebar-$pkgver"
+_srcdir="islita-$pkgver"
 
 build() {
   cd "$_srcdir"
@@ -67,10 +67,10 @@ package() {
   install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/$pkgname.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=AI Usage Sidebar
-Name[zh_CN]=AI 使用量侧边栏
-Comment=Claude Code / Codex quota sidebar
-Comment[zh_CN]=Claude Code / Codex 额度侧边栏
+Name=Islita
+Name[zh_CN]=Islita
+Comment=Plugin island for AI quotas, mail, calendar, notes, files, music and tasks
+Comment[zh_CN]=插件灵动岛：AI 额度、邮件、日程、便利贴、文件、音乐与任务
 Exec=/usr/bin/$pkgname
 Icon=$pkgname
 Terminal=false

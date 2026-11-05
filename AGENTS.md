@@ -1,11 +1,11 @@
-# Installing AI Usage Sidebar — instructions for AI agents
+# Installing Islita — instructions for AI agents
 
 You are an AI coding agent (Claude Code, Codex, Cursor, …) and a user asked you
-to install or configure **AI Usage Sidebar**. Follow this file top to bottom.
+to install or configure **Islita**. Follow this file top to bottom.
 Everything here is per-user and reversible. Humans: the README has the same
 information in prose.
 
-Repository: `https://github.com/harveyxiacn/AI-usage-monitor-sidebar`
+Repository: `https://github.com/harveyxiacn/islita`
 
 ## 0. Ground rules
 
@@ -32,11 +32,11 @@ Linux only — find the package family:
 Pick the newest release and download **one** asset. With the GitHub CLI:
 
 ```sh
-gh release download --repo harveyxiacn/AI-usage-monitor-sidebar --pattern '<PATTERN>' --dir "$TMPDIR_OR_DOWNLOADS"
+gh release download --repo harveyxiacn/islita --pattern '<PATTERN>' --dir "$TMPDIR_OR_DOWNLOADS"
 ```
 
 Without `gh`, list assets at
-`https://api.github.com/repos/harveyxiacn/AI-usage-monitor-sidebar/releases/latest`
+`https://api.github.com/repos/harveyxiacn/islita/releases/latest`
 and download the `browser_download_url` whose name matches the pattern.
 
 | Platform | `<PATTERN>` | Install command |
@@ -66,13 +66,13 @@ sudo apt install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-
 Then:
 
 ```sh
-git clone https://github.com/harveyxiacn/AI-usage-monitor-sidebar.git
-cd AI-usage-monitor-sidebar
+git clone https://github.com/harveyxiacn/islita.git
+cd islita
 scripts/install-linux.sh        # release build (~3 min) + install
 ```
 
-This installs `~/.local/bin/ai-usage-sidebar`, a launcher entry
-(`~/.local/share/applications/ai-usage-sidebar.desktop`) and icons. Re-run it
+This installs `~/.local/bin/islita`, a launcher entry
+(`~/.local/share/applications/islita.desktop`) and icons. Re-run it
 to update. `scripts/install-linux.sh --uninstall` removes it and keeps the
 user's settings and history.
 
@@ -80,12 +80,12 @@ user's settings and history.
 
 ```sh
 hdiutil attach <file>.dmg -nobrowse
-cp -R "/Volumes/AI Usage Sidebar/AI Usage Sidebar.app" /Applications/
-hdiutil detach "/Volumes/AI Usage Sidebar"
+cp -R "/Volumes/Islita/Islita.app" /Applications/
+hdiutil detach "/Volumes/Islita"
 ```
 
 The app is not notarised. After telling the user, clear the quarantine flag:
-`xattr -dr com.apple.quarantine "/Applications/AI Usage Sidebar.app"`.
+`xattr -dr com.apple.quarantine "/Applications/Islita.app"`.
 On first refresh macOS asks for access to the Keychain item
 `Claude Code-credentials`; the user should choose **Always Allow**.
 
@@ -93,9 +93,9 @@ On first refresh macOS asks for access to the Keychain item
 
 | Platform | Start | Log directory |
 |---|---|---|
-| Linux | `gtk-launch ai-usage-sidebar` or `~/.local/bin/ai-usage-sidebar &` (packages: `ai-usage-sidebar &`) | `~/.local/share/io.github.harveyxiacn.ai-usage-sidebar/logs/` |
-| macOS | `open -a "AI Usage Sidebar"` | `~/Library/Logs/io.github.harveyxiacn.ai-usage-sidebar/` |
-| Windows | Start menu → AI Usage Sidebar | `%LOCALAPPDATA%\io.github.harveyxiacn.ai-usage-sidebar\logs\` |
+| Linux | `gtk-launch islita` or `~/.local/bin/islita &` (packages: `islita &`) | `~/.local/share/io.github.harveyxiacn.islita/logs/` |
+| macOS | `open -a "Islita"` | `~/Library/Logs/io.github.harveyxiacn.islita/` |
+| Windows | Start menu → Islita | `%LOCALAPPDATA%\io.github.harveyxiacn.islita\logs\` |
 
 Healthy start-up writes `platform setup: …`, `tray menu ready` and
 `sidebar revealed` to the newest log file within a few seconds. Starting the
@@ -107,7 +107,7 @@ the bar to move it, double-click it (or use the tray icon) for the dashboard.
 On Linux the tray icon has a menu only: a left click does nothing there.
 
 A check that needs no UI: with `"exportSnapshot": true` (see §5) the app writes
-`snapshot.json` after every refresh, and `ai-usage-sidebar --print` reads it
+`snapshot.json` after every refresh, and `islita --print` reads it
 back and exits (exit code 2 = missing or stale data, `--format json` shows
 everything). A signed-in provider reports status `ok` there.
 
@@ -131,6 +131,17 @@ environment variable, below).
   `openrouterKeyEnv` (default `OPENROUTER_API_KEY`). Never write a key into
   `settings.json`; the setting holds the variable's *name* and a pasted key is
   rejected. A variable exported after the app started needs an app restart.
+- OpenCode (Zen and Go): **experimental and unverified**, off until the user
+  enables it. The user pastes an API key from `https://opencode.ai/auth` in
+  Settings → Providers; the app stores it in the OS keychain (service
+  `io.github.harveyxiacn.islita.opencode`), never in `settings.json`. As a
+  headless fallback it also reads `OPENCODE_API_KEY` from the environment. Go
+  windows come from `https://opencode.ai/zen/go/v1/usage` (5-hour, weekly,
+  30-day); a key without Go shows the tightest Zen monthly budget from
+  `https://opencode.ai/console/api/policies/current-budgets`. Both endpoints
+  may need the Console workspace id — set `opencodeWorkspaceId` (a `wrk_…` id
+  or the Console URL) for a key that belongs to a workspace. Never write the
+  key into settings, a log or a message.
 - Multiple accounts: Claude Code and Codex can track extra logins through the
   `accounts` setting (at most 6, each `{id, provider, label, configDir,
   enabled}`; `configDir` must be absolute). The user signs the extra login in
@@ -156,9 +167,9 @@ ignored until it parses, so write it atomically or in one go.)
 
 | Platform | Path |
 |---|---|
-| Linux | `~/.config/io.github.harveyxiacn.ai-usage-sidebar/settings.json` |
-| macOS | `~/Library/Application Support/io.github.harveyxiacn.ai-usage-sidebar/settings.json` |
-| Windows | `%APPDATA%\io.github.harveyxiacn.ai-usage-sidebar\settings.json` |
+| Linux | `~/.config/io.github.harveyxiacn.islita/settings.json` |
+| macOS | `~/Library/Application Support/io.github.harveyxiacn.islita/settings.json` |
+| Windows | `%APPDATA%\io.github.harveyxiacn.islita\settings.json` |
 
 The file may be partial: missing keys take their defaults, unknown or invalid
 values are ignored and numbers are clamped. Write only what the user asked for.
@@ -190,7 +201,7 @@ below list every key exactly once; `pnpm check:agents`
 | `cyberAccent` | `"neon"`, `"matrix"`, `"amber"`, `"ice"`, `"synthwave"` | neon pair the `cyber` HUD is painted with; ignored by the other surfaces |
 | `opacity` | `1` (0.3 – 1) | window opacity |
 | `scale` | `1` (0.75 – 1.5) | overall size multiplier |
-| `colors` | `{"claude":"#ff5c1a","codex":"#10a37f","copilot":"#8250df","openrouter":"#6467f2","warn":"#f5c542","critical":"#ff3b30","surface":"","text":""}` | CSS hex (`#rgb`, `#rrggbb`, `#rrggbbaa`); an invalid value falls back to the default; empty `surface` / `text` = the theme's own |
+| `colors` | `{"claude":"#ff5c1a","codex":"#10a37f","copilot":"#8250df","openrouter":"#6467f2","opencode":"#0ea5e9","warn":"#f5c542","critical":"#ff3b30","surface":"","text":""}` | CSS hex (`#rgb`, `#rrggbb`, `#rrggbbaa`); an invalid value falls back to the default; empty `surface` / `text` = the theme's own |
 | `sizes` | `{"ringSize":56,"ringStroke":4.5,"barGap":18,"barPadding":10,"cornerRadius":26,"labelSize":13}` | px at scale 1, clamped to 40–96, 3–8, 6–40, 4–24, 8–40, 9–18 |
 
 ### The bar: position and behaviour
@@ -201,6 +212,8 @@ below list every key exactly once; `pnpm check:agents`
 | `verticalAlign` | `"center"`, `"top"`, `"bottom"` | position **along** the edge: `top` = its start (left end of a top/bottom edge), `bottom` = its end |
 | `verticalOffset` | `0` (px, positive = towards the end of the edge: down on left/right, right on top/bottom) | also set by dragging |
 | `monitor` | `null` = primary, or a monitor name | |
+| `island` | `false`, `true` | float as a rounded capsule at the top centre of the monitor instead of docking flush with `edge`; the island grows downwards for plugin panels and is not draggable |
+| `islandMargin` | `12` (0 – 64) | gap in px between the island and the top of the monitor's work area (also the side gap when it is very wide) |
 | `alwaysOnTop` | `true` | keep the bar above other windows |
 | `autoHide` | `false`, `true` | collapse to a thin handle when idle |
 | `autoHideDelayMs` | `800` (0 – 600000) | idle time before the bar collapses |
@@ -230,9 +243,10 @@ below list every key exactly once; `pnpm check:agents`
 
 | Key | Values (default first) | Meaning |
 |---|---|---|
-| `providers` | `{"claude":{"enabled":true,"showInSidebar":true,"order":0},"codex":{"enabled":true,"showInSidebar":true,"order":1},"copilot":{"enabled":false,"showInSidebar":true,"order":2},"openrouter":{"enabled":false,"showInSidebar":true,"order":3}}` | `enabled` off = not polled at all; `showInSidebar` off = hidden from the bar only. `copilot` is **experimental** and only turns itself on when its credentials are found; `openrouter` is **experimental** and always starts off |
+| `providers` | `{"claude":{"enabled":true,"showInSidebar":true,"order":0},"codex":{"enabled":true,"showInSidebar":true,"order":1},"copilot":{"enabled":false,"showInSidebar":true,"order":2},"openrouter":{"enabled":false,"showInSidebar":true,"order":3},"opencode":{"enabled":false,"showInSidebar":true,"order":4}}` | `enabled` off = not polled at all; `showInSidebar` off = hidden from the bar only. `copilot` is **experimental** and only turns itself on when its credentials are found; `openrouter` and `opencode` are **experimental** and always start off |
 | `accounts` | `[]` | extra Claude Code / Codex accounts, at most 6: `{"id":"work","provider":"claude","label":"Work","configDir":"/abs/path","enabled":true}`; see §4 |
 | `openrouterKeyEnv` | `"OPENROUTER_API_KEY"` | *name* of the environment variable holding the OpenRouter key (upper-case letters, digits, `_`); never the key |
+| `opencodeWorkspaceId` | `""` | OpenCode Console workspace id (`wrk_…`) or the Console URL that contains it; optional, only sent as a request header. The OpenCode key lives in the OS keychain (or `OPENCODE_API_KEY`), never here |
 | `refreshIntervalSec` | `60` (min 15) | quota polling period; Claude is never polled faster than every 120 s, per account |
 | `adaptiveRefresh` | `true`, `false` | poll a provider less often while its session logs are quiet |
 | `pollingPaused` | `false`, `true` | skip the *automatic* polling (log ingestion keeps running; an explicit refresh still polls). Also in the tray and the command palette |
@@ -249,13 +263,14 @@ below list every key exactly once; `pnpm check:agents`
 | `subscriptionUsd` | `{"claude":0,"codex":0}` (each 0 – 10000, 0 = unknown) | what the user pays per month per provider, to compare with the API-equivalent estimate in History |
 | `notifications` | `false`, `true` | master switch for every notification (native and webhook); the four switches below only act while it is on |
 | `thresholdNotifications` | `true`, `false` | warn when a window crosses `thresholds.warn` / `thresholds.critical` (once per window, level and cycle) |
+| `taskNotifications` | `true`, `false` | notify when a Claude Code / Codex turn finishes, detected in the local session logs (needs `ingestEnabled`); the notice names the provider and project folder only, never prompt or response text |
 | `forecastNotifications` | `true`, `false` | warn when a window is on pace to run out before it resets |
 | `budgetNotifications` | `true`, `false` | warn at 80 % and 100 % of `monthlyBudgetUsd` (needs a budget > 0), once a month each |
 | `weeklySummary` | `false`, `true` | Monday ~09:00: one notification summarising last week |
 | `webhook` | `{"enabled":false,"url":"","kind":"generic"}` | optional second channel: `kind` is `"generic"` (JSON), `"ntfy"` or `"slack"`; `https://` only (enabling with another URL turns it off); the URL is never logged |
 | `focusUntil` | `0` (off), `-1` (until turned off), or an epoch-ms deadline | focus mode silences every notification channel; normally set from the tray, the palette or Settings |
 | `focusHidesSidebar` | `false`, `true` | also hide the bar while focus mode is on |
-| `exportSnapshot` | `false`, `true` | write `snapshot.json` after every refresh for `ai-usage-sidebar --print` and status bars (`docs/STATUSLINE.md`) |
+| `exportSnapshot` | `false`, `true` | write `snapshot.json` after every refresh for `islita --print` and status bars (`docs/STATUSLINE.md`) |
 | `hideAccountEmail` | `false`, `true` | mask account e-mails as `h•••@g•••.com` (screenshots, screen sharing) |
 
 ### Updates, presets and first-run bookkeeping
@@ -276,7 +291,7 @@ Example — Chinese UI, left edge, auto-hide, start at login:
 
 ### Reading the numbers from a script
 
-`ai-usage-sidebar --print [--format json|line|statusline] [--provider ID]`
+`islita --print [--format json|line|statusline] [--provider ID]`
 prints the numbers from `snapshot.json` and exits: no window, no network, exit
 code 2 when the file is missing or older than 15 minutes. It needs
 `exportSnapshot` on and the app running (`docs/STATUSLINE.md`). It is also a
@@ -289,24 +304,24 @@ safe way to check an install without touching the UI.
   AppIndicator extension:
   `https://extensions.gnome.org/extension/615/appindicator-support/`.
 - **KDE / Hyprland / Sway**: native docking is opt-in with
-  `AI_USAGE_SIDEBAR_BACKEND=wayland` and needs `gtk-layer-shell` installed; it
+  `ISLITA_BACKEND=wayland` and needs `gtk-layer-shell` installed; it
   falls back to XWayland on its own. See `docs/PLATFORM.md`. Native Wayland
   cannot register global shortcuts (`shortcutToggleSidebar` /
   `shortcutOpenDashboard`); bind a compositor key to the app instead.
 - **macOS**: an extra Claude account (`accounts`) needs a `.credentials.json`
   in its `configDir`; the Keychain is only consulted for the primary account.
 - **NVIDIA on Linux**: handled automatically (`WEBKIT_DISABLE_DMABUF_RENDERER=1`).
-- **Blank or missing bar**: run with `AI_USAGE_SIDEBAR_LOG=debug` and read the log.
+- **Blank or missing bar**: run with `ISLITA_LOG=debug` and read the log.
 
 ## 7. Uninstall
 
 | Installed with | Remove with |
 |---|---|
 | `scripts/install-linux.sh` | `scripts/install-linux.sh --uninstall` |
-| `.deb` / `.rpm` | `sudo apt remove ai-usage-sidebar` / `sudo dnf remove ai-usage-sidebar` |
+| `.deb` / `.rpm` | `sudo apt remove islita` / `sudo dnf remove islita` |
 | AppImage | delete the file |
-| macOS | quit, delete `/Applications/AI Usage Sidebar.app` |
-| Windows | Settings → Apps → AI Usage Sidebar → Uninstall |
+| macOS | quit, delete `/Applications/Islita.app` |
+| Windows | Settings → Apps → Islita → Uninstall |
 
 Settings and the local usage database stay behind in the directories from §3
 and §5. Delete them only if the user asks for a clean removal.

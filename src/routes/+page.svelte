@@ -52,6 +52,8 @@
   import { detectRingEvents, levelsOf, windowKey, type RingEvent, type RingEventKind, type WindowLevel } from '$lib/ring-events';
   import { handlePeak, handleSegments, labelLayout, type LabelLayout } from '$lib/sidebar-visuals';
   import { t, tDyn } from '$lib/i18n/i18n.svelte';
+  import { attention } from '$lib/plugins/attention.svelte';
+  import { pluginById, ISLAND_PLUGINS } from '$lib/plugins/registry';
   import { handleColorOf, rings, type RingItem } from '$lib/stores/rings.svelte';
   import { settings } from '$lib/stores/settings.svelte';
   import { snapshot } from '$lib/stores/snapshot.svelte';
@@ -82,11 +84,57 @@
   /** ring key of the pinned popover, null when nothing is pinned */
   let pinnedKey = $state<string | null>(null);
 
-  const collapsed = $derived(s.autoHide && !expanded);
+  /**
+   * The dynamic island is its own surface: top centre, no collapsed edge
+   * handle (it shrinks to a one-ring summary instead, in the frontend), and a
+   * CSS-orientation that always reads as a horizontal bar.
+   */
+  const island = $derived(s.island);
+  const collapsed = $derived(!island && s.autoHide && !expanded);
   /** compact mode: slim progress bars instead of rings */
   const compact = $derived(s.ringStyle === 'bar');
   /** top/bottom edges: the bar is a horizontal strip, rings laid out in a row */
-  const horizontal = $derived(s.edge === 'top' || s.edge === 'bottom');
+  const horizontal = $derived(island || s.edge === 'top' || s.edge === 'bottom');
+
+  /**
+   * Island-only state. Idle shows a single summary ring and grows into the
+   * full row on hover/focus; a plugin panel keeps it open until it is closed.
+   * None of this touches the Rust hover state machine, which still owns
+   * auto-hide for edge bars.
+   */
+  let islandExpanded = $state(false);
+  let stageHovered = $state(false);
+  let activePluginId = $state<string | null>(null);
+  let closingPlugin = $state(false);
+  let islandCollapseTimer: ReturnType<typeof setTimeout> | undefined;
+  let panelCloseTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The pointer landed on the idle capsule: the first movement expands it.
+   * Ring hover/click is ignored for that beat so a popover is never anchored
+   * to the summary ring's pre-expansion position.
+   */
+  let suppressRingHover = false;
+  let suppressRingTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Whether the element that currently has focus inside the island got it from
+   * the keyboard. `matches(':focus-visible')` is evaluated at focus time on
+   * purpose: after a later Escape a mouse-focused button would match it too,
+   * which would keep the island open forever.
+   */
+  let stageKeyboardFocus = false;
+  const activePlugin = $derived(pluginById(activePluginId ?? ''));
+  const islandIdle = $derived(island && !islandExpanded);
+
+  /** Busiest provider, used as the idle island's single ring. */
+  const islandSummary = $derived.by(() => {
+    let best: RingItem | null = null;
+    for (const item of items) {
+      const used = item.labelWindow?.usedPercent ?? -1;
+      const bestUsed = best?.labelWindow?.usedPercent ?? -1;
+      if (best === null || used > bestUsed) best = item;
+    }
+    return best;
+  });
 
   function reportSize(size: SizeReport) {
     if (!collapsed) expandedSize = size;
@@ -172,12 +220,22 @@
       disposed = true;
       un?.();
       clearTimeout(fxTimer);
+      clearTimeout(islandCollapseTimer);
+      clearTimeout(panelCloseTimer);
+      clearTimeout(suppressRingTimer);
       disposers.forEach((d) => d());
     };
   });
 
   // theme / scale / opacity / language follow the settings rune
   $effect(() => applyTheme(settings.value));
+
+  // Mail unread / calendar-soon badges are only useful in island mode.
+  $effect(() => {
+    if (!s.island) return;
+    attention.start();
+    return () => attention.stop();
+  });
 
   /** true while the user is carrying the bar to another edge / height */
   let dragging = $state(false);
@@ -193,6 +251,125 @@
     // start the auto-hide timer under the user's hand.
     if (dragging && !hovered) return;
     void hoverReport('bar', hovered);
+  }
+
+  /** Grow the island; called on pointer enter and on keyboard focus. */
+  function expandIsland() {
+    if (!island) return;
+    clearTimeout(islandCollapseTimer);
+    islandExpanded = true;
+  }
+
+  /**
+   * Shrink back to the summary after a short grace period, unless a plugin
+   * panel is open or the pointer/focus is still somewhere in the stage.
+   * The delay keeps moving between the capsule and the panel from flickering.
+   */
+  function scheduleIslandCollapse(delay = 360) {
+    if (!island) return;
+    clearTimeout(islandCollapseTimer);
+    islandCollapseTimer = setTimeout(() => {
+      if (stageHovered || activePluginId !== null) return;
+      // Keyboard focus keeps the island open, but a button that merely kept
+      // focus after a mouse click must not stop it from collapsing.
+      const active = document.activeElement;
+      if (
+        stageKeyboardFocus &&
+        active instanceof HTMLElement &&
+        document.querySelector('.stage')?.contains(active)
+      ) {
+        return;
+      }
+      islandExpanded = false;
+      // The ring the bubble points at is about to disappear (the idle island
+      // only shows the summary), so a pinned bubble must not be left floating.
+      pinnedKey = null;
+      void popoverHide();
+    }, delay);
+  }
+
+  function onStageEnter() {
+    stageHovered = true;
+    if (island && islandIdle) {
+      suppressRingHover = true;
+      clearTimeout(suppressRingTimer);
+      suppressRingTimer = setTimeout(() => (suppressRingHover = false), 500);
+    }
+    expandIsland();
+    reportHover(true);
+  }
+
+  function onStageLeave() {
+    stageHovered = false;
+    scheduleIslandCollapse();
+    reportHover(false);
+  }
+
+  function onStageFocusIn(ev: FocusEvent) {
+    const target = ev.target;
+    stageKeyboardFocus = target instanceof HTMLElement && target.matches(':focus-visible');
+    if (island && islandIdle) {
+      suppressRingHover = true;
+      clearTimeout(suppressRingTimer);
+      suppressRingTimer = setTimeout(() => (suppressRingHover = false), 500);
+    }
+    expandIsland();
+  }
+
+  function onStageFocusOut(ev: FocusEvent) {
+    const next = ev.relatedTarget as Node | null;
+    if (next && (ev.currentTarget as HTMLElement).contains(next)) return;
+    stageKeyboardFocus = false;
+    scheduleIslandCollapse();
+  }
+
+  function togglePlugin(id: string) {
+    expandIsland();
+    clearTimeout(panelCloseTimer);
+    closingPlugin = false;
+    if (activePluginId === id) {
+      closePlugin();
+      return;
+    }
+    activePluginId = id;
+    // A panel and a detail bubble would overlap at the top of the screen.
+    pinnedKey = null;
+    void popoverHide();
+  }
+
+  function prefersReducedMotion(): boolean {
+    return (
+      typeof window !== 'undefined' &&
+      (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+    );
+  }
+
+  function closePlugin() {
+    if (activePluginId === null) return;
+    if (prefersReducedMotion()) {
+      activePluginId = null;
+      closingPlugin = false;
+      scheduleIslandCollapse();
+      return;
+    }
+    if (closingPlugin) return;
+    // Keep the panel mounted for one short exit beat so it leaves with the
+    // same jelly language it arrived with. The guard above makes a second
+    // click or Escape harmless.
+    closingPlugin = true;
+    clearTimeout(panelCloseTimer);
+    panelCloseTimer = setTimeout(() => {
+      activePluginId = null;
+      closingPlugin = false;
+      scheduleIslandCollapse();
+    }, 170);
+  }
+
+  function onWindowKeydown(ev: KeyboardEvent) {
+    if (ev.key === 'Escape' && activePluginId !== null) {
+      ev.preventDefault();
+      closePlugin();
+    }
   }
 
   /** Ring centre in CSS px relative to this window (= the viewport). */
@@ -219,7 +396,7 @@
   }
 
   function onRingEnter(item: RingItem, ev: MouseEvent) {
-    if (dragging) return;
+    if (dragging || suppressRingHover) return;
     requestPopover(item, ev.currentTarget as HTMLElement);
   }
 
@@ -232,6 +409,10 @@
    */
   function onRingClick(item: RingItem, ev: MouseEvent) {
     if (ev.detail > 1) return;
+    if (suppressRingHover) {
+      expandIsland();
+      return;
+    }
     const el = ev.currentTarget as HTMLElement;
     const nextPinned = pinnedKey !== item.key;
     pinnedKey = nextPinned ? item.key : null;
@@ -303,13 +484,141 @@
 
 <svelte:head><title>{t('app.name')}</title></svelte:head>
 
+<svelte:window onkeydown={onWindowKeydown} />
+
+{#snippet ringView(item: RingItem)}
+  <div
+    class="slot"
+    class:pinned={pinnedKey === item.key}
+    role="button"
+    tabindex="0"
+    aria-label={ringLabel(item)}
+    aria-pressed={pinnedKey === item.key}
+    onmouseenter={(e) => onRingEnter(item, e)}
+    onclick={(e) => onRingClick(item, e)}
+    ondblclick={(e) => e.stopPropagation()}
+    onkeydown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onRingClick(item, e as unknown as MouseEvent);
+      }
+    }}
+  >
+    {#if compact}
+      <MiniBar
+        segments={arcViews(item)}
+        thresholds={s.thresholds}
+        percentMode={s.percentMode}
+        layout={layoutOf(item)}
+        {horizontal}
+        status={item.quota.status}
+      >
+        {#snippet logo(logoSize)}
+          {#if s.sidebarItems.logo}<ProviderLogo provider={item.provider} size={logoSize} />{/if}
+        {/snippet}
+      </MiniBar>
+    {:else}
+      <Ring
+        arcs={arcViews(item)}
+        labelPercent={item.labelWindow?.usedPercent ?? null}
+        thresholds={s.thresholds}
+        showPercentLabel={s.sidebarItems.percentLabel}
+        percentMode={s.percentMode}
+        percentPosition={s.percentPosition}
+        layout={layoutOf(item)}
+        inline={horizontal}
+        status={item.quota.status}
+        interactive
+      >
+        {#snippet logo(logoSize)}
+          {#if s.sidebarItems.logo}<ProviderLogo provider={item.provider} size={logoSize} />{/if}
+        {/snippet}
+      </Ring>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet pillContent()}
+  {#if loading}
+    {#each placeholders as i (i)}
+      <div class="slot">
+        {#if compact}
+          <MiniBar segments={[]} thresholds={s.thresholds} {horizontal} loading />
+        {:else}
+          <Ring arcs={[]} thresholds={s.thresholds} loading showPercentLabel={s.sidebarItems.percentLabel} percentPosition={s.percentPosition} />
+        {/if}
+      </div>
+    {/each}
+  {:else if islandIdle && islandSummary}
+    <!-- idle island: one ring for the busiest provider, so the capsule stays
+         small until the pointer or keyboard asks for the full row -->
+    <div class="summary" aria-label={t('island.summary')}>
+      {@render ringView(islandSummary)}
+      {#if items.length > 1}
+        <span class="more-count" aria-label={t('island.providerCount', { count: items.length - 1 })}>
+          +{items.length - 1}
+        </span>
+      {/if}
+    </div>
+  {:else if items.length === 0}
+    <!-- Nothing to draw (no provider enabled, or everything hidden from the
+         bar): the grip is rendered whatever `moreButton` says, so the pill
+         keeps a non-zero box and stays hoverable, draggable and clickable. -->
+    <div class="slot empty" title={t('overview.noProviders')}>
+      <button class="dots" onclick={() => void openDashboard('settings')} ondblclick={(e) => e.stopPropagation()} aria-label={t('sidebar.more')}>⋯</button>
+    </div>
+  {:else}
+    {#each items as item (item.key)}
+      {@render ringView(item)}
+    {/each}
+    {#if s.sidebarItems.moreButton}
+      <button class="dots" onclick={() => void openDashboard('overview')} ondblclick={(e) => e.stopPropagation()} aria-label={t('sidebar.more')}>⋯</button>
+    {/if}
+  {/if}
+
+  {#if island && !islandIdle && !loading}
+    <div class="island-tools" role="toolbar" aria-label={t('island.pluginRail')}>
+      {#each ISLAND_PLUGINS as plugin, i (plugin.id)}
+        {@const active = activePluginId === plugin.id}
+        <button
+          type="button"
+          class="tool"
+          class:active
+          style={`--i:${i}`}
+          aria-pressed={active}
+          aria-label={tDyn(plugin.label)}
+          title={active ? `${tDyn(plugin.label)} — ${t('island.closePanel')}` : tDyn(plugin.label)}
+          onclick={(e) => {
+            e.stopPropagation();
+            togglePlugin(plugin.id);
+          }}
+          ondblclick={(e) => e.stopPropagation()}
+        >
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d={plugin.icon}></path>
+          </svg>
+          {#if plugin.id === 'mail' && attention.mailUnread > 0}
+            <span class="tool-badge" aria-hidden="true">{attention.mailUnread > 9 ? '9+' : attention.mailUnread}</span>
+          {:else if plugin.id === 'calendar' && attention.calendarSoon}
+            <span class="tool-dot" aria-hidden="true"></span>
+          {/if}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
+{/snippet}
+
 <div
   class="stage"
-  data-edge={s.edge}
+  data-edge={island ? 'top' : s.edge}
+  data-island={island ? 'true' : undefined}
   use:observeSize={reportSize}
   oncontextmenu={(e) => e.preventDefault()}
-  onmouseenter={() => reportHover(true)}
-  onmouseleave={() => reportHover(false)}
+  onmouseenter={onStageEnter}
+  onmouseleave={onStageLeave}
+  onfocusin={onStageFocusIn}
+  onfocusout={onStageFocusOut}
   onmousemove={heartbeat}
   role="presentation"
 >
@@ -334,81 +643,32 @@
         <span class="seg" style:background={handleColor}></span>
       {/each}
     </div>
+  {:else if island}
+    <!-- the island is never dragged: a drop would fight the top-centre
+         placement watchdog, so the whole capsule is a normal surface. The
+         panel is a sibling surface, not a flex child of the capsule: its
+         intrinsic width would otherwise stretch the capsule. -->
+    <div class="island-shell">
+      <div
+        class="pill surface island"
+        class:compact
+        class:island-idle={islandIdle}
+        class:island-open={!islandIdle}
+        ondblclick={() => void openDashboard('overview')}
+        role="presentation"
+      >
+        {@render pillContent()}
+      </div>
+      {#if activePlugin && !islandIdle && !loading}
+        {@const PluginPanel = activePlugin.component}
+        <section class="island-panel surface" class:closing={closingPlugin} aria-label={tDyn(activePlugin.label)}>
+          <PluginPanel close={closePlugin} />
+        </section>
+      {/if}
+    </div>
   {:else}
     <div class="pill surface" class:compact use:dragHandle={onDrag} ondblclick={() => void openDashboard('overview')} role="presentation">
-      {#if loading}
-        {#each placeholders as i (i)}
-          <div class="slot">
-            {#if compact}
-              <MiniBar segments={[]} thresholds={s.thresholds} {horizontal} loading />
-            {:else}
-              <Ring arcs={[]} thresholds={s.thresholds} loading showPercentLabel={s.sidebarItems.percentLabel} percentPosition={s.percentPosition} />
-            {/if}
-          </div>
-        {/each}
-      {:else if items.length === 0}
-        <!-- Nothing to draw (no provider enabled, or everything hidden from the
-             bar): the grip is rendered whatever `moreButton` says, so the pill
-             keeps a non-zero box and stays hoverable, draggable and clickable. -->
-        <div class="slot empty" title={t('overview.noProviders')}>
-          <button class="dots" onclick={() => void openDashboard('settings')} ondblclick={(e) => e.stopPropagation()} aria-label={t('sidebar.more')}>⋯</button>
-        </div>
-      {:else}
-        {#each items as item (item.key)}
-          <div
-            class="slot"
-            class:pinned={pinnedKey === item.key}
-            role="button"
-            tabindex="0"
-            aria-label={ringLabel(item)}
-            aria-pressed={pinnedKey === item.key}
-            onmouseenter={(e) => onRingEnter(item, e)}
-            onclick={(e) => onRingClick(item, e)}
-            ondblclick={(e) => e.stopPropagation()}
-            onkeydown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onRingClick(item, e as unknown as MouseEvent);
-              }
-            }}
-          >
-            {#if compact}
-              <MiniBar
-                segments={arcViews(item)}
-                thresholds={s.thresholds}
-                percentMode={s.percentMode}
-                layout={layoutOf(item)}
-                {horizontal}
-                status={item.quota.status}
-              >
-                {#snippet logo(logoSize)}
-                  {#if s.sidebarItems.logo}<ProviderLogo provider={item.provider} size={logoSize} />{/if}
-                {/snippet}
-              </MiniBar>
-            {:else}
-              <Ring
-                arcs={arcViews(item)}
-                labelPercent={item.labelWindow?.usedPercent ?? null}
-                thresholds={s.thresholds}
-                showPercentLabel={s.sidebarItems.percentLabel}
-                percentMode={s.percentMode}
-                percentPosition={s.percentPosition}
-                layout={layoutOf(item)}
-                inline={horizontal}
-                status={item.quota.status}
-                interactive
-              >
-                {#snippet logo(logoSize)}
-                  {#if s.sidebarItems.logo}<ProviderLogo provider={item.provider} size={logoSize} />{/if}
-                {/snippet}
-              </Ring>
-            {/if}
-          </div>
-        {/each}
-        {#if s.sidebarItems.moreButton}
-          <button class="dots" onclick={() => void openDashboard('overview')} ondblclick={(e) => e.stopPropagation()} aria-label={t('sidebar.more')}>⋯</button>
-        {/if}
-      {/if}
+      {@render pillContent()}
     </div>
   {/if}
 </div>
@@ -563,6 +823,256 @@
   .stage[data-edge='bottom'] .dots::before {
     top: 50%;
     transform: translateY(-50%);
+  }
+
+  /* ---- dynamic island -------------------------------------------------
+     Same surface material, but a free-floating capsule: no flush edge, full
+     rounding. A plugin panel is a sibling surface below it (`.island-shell`),
+     never a child of the pill: a full-width flex child inside a max-content
+     pill would otherwise drag the capsule out to the panel's width. The
+     window is measured after every state change, so these transitions are
+     visible inside the content while Rust re-centres the window. */
+  .stage[data-island] .pill.island {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    min-width: 6.5rem;
+    min-height: calc(var(--ring-size) + 2 * var(--bar-padding));
+    padding: var(--bar-padding) calc(var(--bar-padding) + 0.35rem);
+    gap: calc(var(--bar-gap) * 0.55);
+    border: 1px solid var(--bar-border);
+    border-radius: 999px;
+    box-shadow: var(--bar-shadow), 0 18px 46px -20px rgb(0 0 0 / 0.55);
+    transform-origin: 50% 0;
+    will-change: transform;
+    transition:
+      border-radius 320ms var(--ease-out),
+      padding 220ms var(--ease-out),
+      gap 220ms var(--ease-out),
+      box-shadow 220ms var(--ease-out);
+  }
+
+  /* The jelly is deliberately a content-transform, not a window resize: Rust
+     re-centres the window from the measured box, and the capsule overshoots
+     inside it. Fill mode is left at `none` so the resting transform is always
+     identity, never a stuck keyframe. */
+  .stage[data-island] .pill.island.island-open {
+    animation: island-open-jelly 520ms cubic-bezier(0.22, 1.35, 0.36, 1);
+  }
+
+  .stage[data-island] .pill.island.compact {
+    min-width: 0;
+    min-height: 0;
+    gap: 0.75rem;
+    padding: 0.625rem 0.5rem;
+  }
+
+  /* Idle: one summary ring, tighter padding, still a capsule. This class is
+     toggled by hover/focus, not by the Rust auto-hide state machine. */
+  .stage[data-island] .pill.island.island-idle {
+    min-width: 5.5rem;
+    padding: calc(var(--bar-padding) * 0.6) calc(var(--bar-padding) * 0.9);
+    gap: 0;
+    animation: island-idle-jelly 380ms cubic-bezier(0.22, 1.3, 0.36, 1);
+  }
+
+  .island-shell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: max-content;
+    gap: 0.45rem;
+  }
+
+  .summary {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .more-count {
+    flex: none;
+    padding: 0 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 0.625rem;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .island-tools {
+    display: flex;
+    align-self: stretch;
+    align-items: center;
+    gap: 0.125rem;
+    margin-left: 0.1rem;
+    padding-left: 0.45rem;
+    border-left: 1px solid var(--border);
+    animation: island-tools-in 360ms cubic-bezier(0.2, 1.35, 0.35, 1);
+  }
+
+  .tool {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: 999px;
+    color: var(--muted);
+    animation: island-tool-pop 300ms cubic-bezier(0.2, 1.5, 0.4, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 18ms);
+    transition:
+      transform 220ms cubic-bezier(0.2, 1.5, 0.4, 1),
+      background var(--dur-ui) var(--ease-out),
+      color var(--dur-ui) var(--ease-out),
+      box-shadow 220ms var(--ease-out);
+  }
+
+  .tool-badge {
+    position: absolute;
+    top: -0.125rem;
+    right: -0.1875rem;
+    min-width: 0.75rem;
+    height: 0.75rem;
+    padding: 0 0.1875rem;
+    border: 1.5px solid var(--bg);
+    border-radius: 999px;
+    background: var(--focus);
+    color: var(--bg);
+    font-size: 0.5rem;
+    font-weight: 700;
+    line-height: 0.75rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tool-dot {
+    position: absolute;
+    top: 0.125rem;
+    right: 0.125rem;
+    width: 0.3125rem;
+    height: 0.3125rem;
+    border-radius: 999px;
+    background: var(--warn);
+    box-shadow: 0 0 0 1.5px var(--bg);
+  }
+
+  .tool:hover {
+    transform: translateY(-1px) scale(1.1);
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  .tool:active {
+    transform: translateY(0) scale(0.9);
+    transition-duration: 90ms;
+  }
+
+  .tool.active {
+    transform: scale(1.04);
+    background: var(--surface-2);
+    color: var(--focus);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  /* A sibling surface under the capsule, centred like a Dynamic Island panel.
+     It is measured by the same observer, so the window grows downwards. */
+  .island-panel {
+    width: max-content;
+    max-width: calc(100vw - 1.5rem);
+    padding: 0.55rem 0.7rem;
+    border-radius: calc(var(--r-pill) + 2px);
+    transform-origin: 50% 0;
+    animation: island-panel-in 420ms cubic-bezier(0.2, 1.35, 0.35, 1);
+  }
+
+  .island-panel.closing {
+    animation: island-panel-out 170ms cubic-bezier(0.4, 0, 0.8, 0.4) both;
+    pointer-events: none;
+  }
+
+  @keyframes island-open-jelly {
+    0% {
+      transform: scale(0.94, 0.84);
+    }
+    36% {
+      transform: scale(1.02, 1.05);
+    }
+    58% {
+      transform: scale(0.99, 0.985);
+    }
+    79% {
+      transform: scale(1.006, 1.006);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes island-idle-jelly {
+    0% {
+      transform: scale(1);
+    }
+    30% {
+      transform: scale(0.96, 0.9);
+    }
+    62% {
+      transform: scale(1.015, 1.02);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes island-tools-in {
+    0% {
+      opacity: 0;
+      transform: translateY(-3px) scaleX(0.97);
+    }
+    70% {
+      opacity: 1;
+      transform: translateY(1px) scaleX(1.008);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scaleX(1);
+    }
+  }
+
+  @keyframes island-tool-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(3px) scale(0.6);
+    }
+    60% {
+      opacity: 1;
+      transform: translateY(-1px) scale(1.06);
+    }
+  }
+
+  @keyframes island-panel-in {
+    0% {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.94);
+    }
+    60% {
+      opacity: 1;
+      transform: translateY(1px) scale(1.008);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes island-panel-out {
+    to {
+      opacity: 0;
+      transform: translateY(-6px) scale(0.97);
+    }
   }
 
   .handle {

@@ -169,7 +169,7 @@ jobs:
           name: linux-binary
           if-no-files-found: error
           retention-days: 1
-          path: src-tauri/target/release/ai-usage-sidebar
+          path: src-tauri/target/release/islita
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
@@ -214,5 +214,5 @@ jobs:
 
       - name: Launch it and wait for `sidebar revealed`
         run: |
-          chmod +x bin/ai-usage-sidebar
-          scripts/smoke-linux.sh "$PWD/bin/ai-usage-sidebar"
+          chmod +x bin/islita
+          scripts/smoke-linux.sh "$PWD/bin/islita"

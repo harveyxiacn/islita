@@ -18,7 +18,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
 /// Release page for builds that cannot be replaced in place.
-pub const RELEASES_URL: &str = "https://github.com/harveyxiacn/AI-usage-monitor-sidebar/releases";
+pub const RELEASES_URL: &str = "https://github.com/harveyxiacn/islita/releases";
 /// Delay before the first automatic check, so start-up stays quiet and fast.
 pub const FIRST_CHECK_DELAY_SEC: u64 = 30;
 /// Period of the automatic check afterwards.

@@ -27,7 +27,7 @@ test('an experimental provider is listed, badged and switched off', async ({ pag
   // (the row has two switches: "Track" polls it, "Bar" only shows it)
   const toggle = row.getByRole('checkbox', { name: /Track this provider/ });
   await expect(toggle).not.toBeChecked();
-  await expect(page.locator('.prow')).toHaveCount(4); // Claude, Codex, Copilot, OpenRouter
+  await expect(page.locator('.prow')).toHaveCount(5); // Claude, Codex, Copilot, OpenRouter, OpenCode
 
   // No hand-written mark exists for it: the fallback monogram is drawn.
   await expect(row.locator('.plogo svg text')).toHaveText('C');
@@ -37,8 +37,29 @@ test('an experimental provider is listed, badged and switched off', async ({ pag
   await expect(page.getByRole('button', { name: /Copilot/ })).toHaveCount(0);
 });
 
-test('an unknown provider gets a colour picker without a hand-written label', async ({ page }) => {
+test('an OpenCode key is saved in the keychain and turns tracking on', async ({ page }) => {
   await page.goto('/dashboard');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+
+  const card = page.locator('#providers');
+  const row = card.locator('.prow').filter({ hasText: 'OpenCode' });
+  await expect(row.getByRole('checkbox', { name: /Track this provider/ })).not.toBeChecked();
+
+  const key = card.getByLabel('OpenCode API key', { exact: true });
+  await key.fill('sk-opencode-test-not-a-real-key');
+  await card.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(card.getByText('A key is saved in the OS keychain.')).toBeVisible();
+  await expect(row.getByRole('checkbox', { name: /Track this provider/ })).toBeChecked();
+  // The key itself never comes back to the UI.
+  await expect(key).toHaveValue('');
+
+  // Removing the key clears the saved state but leaves the provider switch alone.
+  await card.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(card.getByText('No key saved.')).toBeVisible();
+});
+
+test('an unknown provider gets a colour picker without a hand-written label', async ({ page }) => {  await page.goto('/dashboard');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
   // "Claude accent" / "Codex accent" are translated; a provider with no i18n

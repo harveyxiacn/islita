@@ -64,7 +64,7 @@ test('overview refreshes and history filters and exports the visible rows', asyn
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^ai-usage-.*\.csv$/);
+  expect(download.suggestedFilename()).toMatch(/^islita-.*\.csv$/);
   const csv = await readFile((await download.path())!, 'utf8');
   expect(csv).toContain('bucket_start,provider,model');
   expect(csv).toContain(',codex,');

@@ -5,8 +5,8 @@ mod parser;
 mod store;
 pub use insights::insights;
 pub use store::{
-    clear_analysis, content_page, detail, ensure_schema, index_codex_titles, index_file, list,
-    set_alias,
+    clear_analysis, completed_tasks, content_page, detail, ensure_schema, index_codex_titles,
+    index_file, list, set_alias,
 };
 
 use crate::state::AppState;

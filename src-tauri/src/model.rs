@@ -390,6 +390,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_island_margin() -> u32 {
+    12
+}
+
 /// What the floating bar is allowed to draw. Everything switched off here is
 /// still polled, still in the dashboard and still able to raise a warning —
 /// see `src/lib/sidebar-items.ts` for the filtering rules.
@@ -517,6 +521,7 @@ pub struct ColorSettings {
     pub codex: String,
     pub copilot: String,
     pub openrouter: String,
+    pub opencode: String,
     pub warn: String,
     pub critical: String,
     pub surface: String,
@@ -530,6 +535,7 @@ impl Default for ColorSettings {
             codex: "#10a37f".into(),
             copilot: "#8250df".into(),
             openrouter: "#6467f2".into(),
+            opencode: "#0ea5e9".into(),
             warn: "#f5c542".into(),
             critical: "#ff3b30".into(),
             surface: "".into(),
@@ -580,6 +586,16 @@ pub struct Settings {
     /// left/right edge, right on a top/bottom edge).
     pub vertical_offset: i32,
     pub monitor: Option<String>,
+    /// Float as a rounded capsule at the top centre of the target monitor
+    /// instead of docking flush with `edge`. The island grows downwards when a
+    /// plugin panel is open; `edge`/`vertical_align`/`vertical_offset` no
+    /// longer place it, but `edge` still describes the frontend's orientation
+    /// fallback.
+    #[serde(default)]
+    pub island: bool,
+    /// Gap between the island and the top of the monitor's work area, px.
+    #[serde(default = "default_island_margin")]
+    pub island_margin: u32,
     pub auto_hide: bool,
     pub auto_hide_delay_ms: u64,
     /// The popover closes after this long without any pointer activity on the
@@ -626,6 +642,11 @@ pub struct Settings {
     /// Name of the environment variable that holds the OpenRouter API key
     /// (experimental provider). Never the key itself.
     pub openrouter_key_env: String,
+    /// OpenCode Console workspace id (`wrk_…`) or the Console URL containing
+    /// it. Optional: only used as the `x-opencode-org-id` header so a key that
+    /// belongs to several workspaces can read the right Go allowance and Zen
+    /// budgets. The API key itself lives in the OS keychain.
+    pub opencode_workspace_id: String,
     /// What the user pays per month for each provider's subscription, in USD;
     /// 0 = unknown. Only used to compare the API-equivalent estimate with it.
     pub subscription_usd: BTreeMap<String, f64>,
@@ -654,6 +675,10 @@ pub struct Settings {
     pub forecast_notifications: bool,
     /// Warn when a window crosses `thresholds.warn` / `thresholds.critical`.
     pub threshold_notifications: bool,
+    /// Notify when a Claude Code / Codex turn finishes (detected in the local
+    /// session logs; the notice carries provider and project, never prompt or
+    /// response text).
+    pub task_notifications: bool,
     /// Warn when the month-to-date estimated cost reaches 80 % / 100 % of
     /// `monthly_budget_usd` (needs a budget > 0).
     pub budget_notifications: bool,
@@ -719,6 +744,8 @@ impl Default for Settings {
             vertical_align: VerticalAlign::Center,
             vertical_offset: 0,
             monitor: None,
+            island: false,
+            island_margin: 12,
             auto_hide: false,
             auto_hide_delay_ms: 800,
             popover_timeout_sec: 10,
@@ -740,6 +767,7 @@ impl Default for Settings {
             pricing_url: String::new(),
             monthly_budget_usd: 0.0,
             openrouter_key_env: "OPENROUTER_API_KEY".into(),
+            opencode_workspace_id: String::new(),
             subscription_usd: [("claude", 0.0), ("codex", 0.0)]
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v))
@@ -761,6 +789,7 @@ impl Default for Settings {
             notifications: false,
             forecast_notifications: true,
             threshold_notifications: true,
+            task_notifications: true,
             budget_notifications: true,
             weekly_summary: false,
             webhook: WebhookSettings::default(),
@@ -1184,6 +1213,8 @@ pub mod events {
     pub const DASHBOARD_NAVIGATE: &str = "dashboard-navigate";
     pub const UPDATE_STATUS: &str = "update-status";
     pub const PRICE_UPDATE_STATUS: &str = "price-update-status";
+    /// One `TaskCompletion`, emitted after ingestion sees a finished turn.
+    pub const TASK_COMPLETED: &str = "task-completed";
 }
 
 /// Window labels.

@@ -451,6 +451,70 @@ fn recent_order_includes_new_user_activity_before_next_usage_record() {
 }
 
 #[test]
+fn terminal_stop_reason_records_a_finished_turn_and_skips_subagents() {
+    let db = Db::open_in_memory().unwrap();
+    ensure_schema(&db).unwrap();
+    let (dir, path) = fixture(&[
+        json!({"type":"user","sessionId":"main","uuid":"u1","timestamp":"2026-09-28T01:00:00Z","message":{"content":"First task"}}),
+        json!({"type":"assistant","sessionId":"main","requestId":"r1","timestamp":"2026-09-28T01:00:10Z","message":{"id":"a1","content":[{"type":"tool_use","id":"c1","name":"test","input":{}}],"stop_reason":"tool_use","usage":{"input_tokens":2}}}),
+        json!({"type":"assistant","sessionId":"main","requestId":"r2","timestamp":"2026-09-28T01:01:00Z","message":{"id":"a2","content":[{"type":"text","text":"Done"}],"stop_reason":"end_turn","usage":{"input_tokens":3,"output_tokens":5}}}),
+    ]);
+    index_file(&db, "claude", &path).unwrap();
+    let tasks = completed_tasks(&db, 0, i64::MAX, 10).unwrap();
+    assert_eq!(
+        tasks.len(),
+        1,
+        "only the terminal assistant message finishes"
+    );
+    assert_eq!(tasks[0].provider, "claude");
+    assert_eq!(tasks[0].session_id, "main");
+    assert!(tasks[0].finished_at > 0);
+    assert!(
+        completed_tasks(&db, tasks[0].finished_at, i64::MAX, 10)
+            .unwrap()
+            .is_empty(),
+        "the boundary is exclusive, so one turn is never announced twice"
+    );
+
+    let agents = dir.join("subagents");
+    std::fs::create_dir(&agents).unwrap();
+    std::fs::write(
+        agents.join("agent-x.jsonl"),
+        json!({"type":"user","sessionId":"main","uuid":"child-u","timestamp":"2026-09-28T01:02:00Z","message":{"content":"Subtask"}})
+            .to_string()
+            + "\n"
+            + &json!({"type":"assistant","sessionId":"main","requestId":"r3","timestamp":"2026-09-28T01:02:30Z","message":{"id":"child-a","content":[{"type":"text","text":"Done"}],"stop_reason":"end_turn","usage":{"input_tokens":1}}}).to_string()
+            + "\n",
+    )
+    .unwrap();
+    index_file(&db, "claude", &agents.join("agent-x.jsonl")).unwrap();
+    assert_eq!(
+        completed_tasks(&db, 0, i64::MAX, 10).unwrap().len(),
+        1,
+        "a subagent finishing while the parent keeps working is not a user-facing task"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn codex_task_complete_is_a_finished_task() {
+    let db = Db::open_in_memory().unwrap();
+    ensure_schema(&db).unwrap();
+    let (dir, path) = fixture(&[
+        json!({"type":"session_meta","payload":{"id":"cx","cwd":"/work/cli"}}),
+        json!({"type":"event_msg","timestamp":"2026-09-28T02:00:00Z","payload":{"type":"task_started","turn_id":"t1"}}),
+        json!({"type":"event_msg","timestamp":"2026-09-28T02:00:30Z","payload":{"type":"task_complete","turn_id":"t1"}}),
+    ]);
+    index_file(&db, "codex", &path).unwrap();
+    let tasks = completed_tasks(&db, 0, i64::MAX, 10).unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].provider, "codex");
+    assert_eq!(tasks[0].session_id, "cx");
+    assert_eq!(tasks[0].project, "/work/cli");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn delayed_streaming_completion_keeps_the_original_user_turn() {
     let db = Db::open_in_memory().unwrap();
     ensure_schema(&db).unwrap();

@@ -612,6 +612,7 @@ async fn run_ingest_selected(
             ..IngestStats::default()
         },
     );
+    let task_db = db.clone();
     let stats = tauri::async_runtime::spawn_blocking(move || match paths {
         Some(paths) => ingest::run_paths(&db, &paths),
         None => ingest::run(&db, full),
@@ -623,6 +624,9 @@ async fn run_ingest_selected(
         stats
     });
     running.store(false, Ordering::SeqCst);
+    if !stats.running {
+        crate::commands::tasks::on_ingest(app, &task_db);
+    }
 
     if stats.events_added > 0 || !stats.errors.is_empty() {
         log::info!(

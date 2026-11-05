@@ -95,7 +95,7 @@ pub async fn export_settings(
             .file()
             .set_parent(&window)
             .add_filter("JSON", &["json"])
-            .set_file_name("ai-usage-sidebar-settings.json")
+            .set_file_name("islita-settings.json")
             .blocking_save_file()
         else {
             return Ok(None);

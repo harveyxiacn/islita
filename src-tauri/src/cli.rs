@@ -1,4 +1,4 @@
-//! `ai-usage-sidebar --print [--format json|line|statusline] [--provider ID]`
+//! `islita --print [--format json|line|statusline] [--provider ID]`
 //!
 //! Prints the numbers from `snapshot.json` (see `export_snapshot.rs`) and
 //! exits, so a shell prompt, tmux, polybar or Claude Code's `statusLine` can
@@ -120,6 +120,10 @@ fn short_name(p: &ExportProvider) -> String {
         "claude" => "CC".into(),
         "codex" => "CX".into(),
         "copilot" => "GH".into(),
+        // OpenRouter keeps its historical two-letter fallback ("OP"); OpenCode
+        // needs its own or both would read OP.
+        "openrouter" => "OP".into(),
+        "opencode" => "OC".into(),
         other => other.chars().take(2).collect::<String>().to_uppercase(),
     };
     // an extra account: `CC@work`
@@ -218,7 +222,7 @@ pub fn load(data_dir: &Path, now_ms: i64) -> Result<SnapshotFile, String> {
     let text = std::fs::read_to_string(&path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             format!(
-                "{} not found. Start AI Usage Sidebar and turn on Settings > Integrations > \
+                "{} not found. Start Islita and turn on Settings > Integrations > \
                  Export snapshot (\"exportSnapshot\": true in settings.json).",
                 path.display()
             )
@@ -242,7 +246,7 @@ pub fn load(data_dir: &Path, now_ms: i64) -> Result<SnapshotFile, String> {
     let age = (now_ms - updated) / 1000;
     if age > MAX_AGE_SEC {
         return Err(format!(
-            "snapshot is stale ({} old, limit {}): is AI Usage Sidebar running, and is polling \
+            "snapshot is stale ({} old, limit {}): is Islita running, and is polling \
              not paused?",
             format_countdown(age),
             format_countdown(MAX_AGE_SEC)
@@ -254,7 +258,7 @@ pub fn load(data_dir: &Path, now_ms: i64) -> Result<SnapshotFile, String> {
 /// The directory the running app keeps `usage.db` and `snapshot.json` in,
 /// computed without Tauri (same rule as `lib.rs`).
 pub fn default_data_dir() -> Option<PathBuf> {
-    const ID: &str = "io.github.harveyxiacn.ai-usage-sidebar";
+    const ID: &str = "io.github.harveyxiacn.islita";
     let roaming = dirs::data_dir()?.join(ID);
     let local = dirs::data_local_dir().map(|d| d.join(ID));
     Some(crate::state::pick_data_dir(roaming, local))
@@ -275,7 +279,7 @@ pub fn run(
             0
         }
         Err(message) => {
-            let _ = writeln!(err, "ai-usage-sidebar: {message}");
+            let _ = writeln!(err, "islita: {message}");
             2
         }
     }
@@ -294,16 +298,13 @@ pub fn handle(args: impl Iterator<Item = OsString>) -> Option<i32> {
         Err(message) => {
             let _ = writeln!(
                 err,
-                "ai-usage-sidebar: {message}\nusage: ai-usage-sidebar --print [--format json|line|statusline] [--provider ID]"
+                "islita: {message}\nusage: islita --print [--format json|line|statusline] [--provider ID]"
             );
             return Some(1);
         }
     };
     let Some(dir) = default_data_dir() else {
-        let _ = writeln!(
-            err,
-            "ai-usage-sidebar: cannot locate the app data directory"
-        );
+        let _ = writeln!(err, "islita: cannot locate the app data directory");
         return Some(2);
     };
     let now = chrono::Utc::now().timestamp_millis();
@@ -503,6 +504,24 @@ mod tests {
             render(&f, &args, now_ms()).unwrap(),
             "CC 5h 95%! 7d 41% | CX 5h 12% ?"
         );
+    }
+
+    #[test]
+    fn every_provider_gets_its_own_statusline_abbreviation() {
+        for (id, short) in [
+            ("claude", "CC"),
+            ("codex", "CX"),
+            ("copilot", "GH"),
+            ("openrouter", "OP"),
+            ("opencode", "OC"),
+            ("opencode@work", "OC@work"),
+        ] {
+            assert_eq!(
+                short_name(&provider(id, id, "ok", vec![])),
+                short,
+                "abbreviation for {id}"
+            );
+        }
     }
 
     #[test]

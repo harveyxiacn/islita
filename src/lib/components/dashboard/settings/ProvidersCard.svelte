@@ -6,21 +6,76 @@
   import SettingsBlock from './SettingsBlock.svelte';
   import SettingsCard from './SettingsCard.svelte';
   import ProviderLogo from '$lib/components/ProviderLogo.svelte';
-  import { getProviders } from '$lib/api';
+  import { getProviders, opencodeClearKey, opencodeKeyStatus, opencodeSetKey } from '$lib/api';
   import { t } from '$lib/i18n/i18n.svelte';
   import { providerDisplayName } from '$lib/providers';
   import { settings } from '$lib/stores/settings.svelte';
   import { snapshot } from '$lib/stores/snapshot.svelte';
-  import type { ProviderId, ProviderInfo } from '$lib/types';
+  import type { OpenCodeKeyStatus, ProviderId, ProviderInfo } from '$lib/types';
 
   const s = $derived(settings.value);
 
   let providerInfos = $state<ProviderInfo[]>([]);
   let error = $state<string | null>(null);
 
+  // OpenCode's API key lives in the OS keychain, not in settings: the card
+  // only ever sees whether one is saved and where it came from.
+  let opencodeKey = $state('');
+  let opencodeStatus = $state<OpenCodeKeyStatus>({ saved: false, fromEnv: false });
+  let opencodeBusy = $state(false);
+  let opencodeError = $state<string | null>(null);
+
   onMount(() => {
     void getProviders().then((p) => (providerInfos = p)).catch((e) => (error = String(e)));
+    void opencodeKeyStatus()
+      .then((status) => (opencodeStatus = status))
+      .catch(() => {});
   });
+
+  const opencodeKeyState = $derived(
+    opencodeStatus.saved
+      ? t('settings.opencodeKey.saved')
+      : opencodeStatus.fromEnv
+        ? t('settings.opencodeKey.fromEnv')
+        : t('settings.opencodeKey.empty')
+  );
+
+  async function saveOpenCodeKey() {
+    const key = opencodeKey.trim();
+    if (!key || opencodeBusy) return;
+    opencodeBusy = true;
+    opencodeError = null;
+    try {
+      await opencodeSetKey(key);
+      opencodeKey = '';
+      opencodeStatus = await opencodeKeyStatus();
+      // A saved key is useless while the provider is not tracked; turn it on
+      // the first time so “paste a key and see the windows” is one step.
+      if (!s.providers.opencode?.enabled) {
+        await settings.patchProvider('opencode', { enabled: true });
+      }
+      void snapshot.refresh('opencode');
+    } catch (e) {
+      opencodeError = String(e);
+    } finally {
+      opencodeBusy = false;
+    }
+  }
+
+  async function clearOpenCodeKey() {
+    if (opencodeBusy) return;
+    opencodeBusy = true;
+    opencodeError = null;
+    try {
+      await opencodeClearKey();
+      opencodeStatus = await opencodeKeyStatus();
+      void snapshot.refresh('opencode');
+    } catch (e) {
+      opencodeError = String(e);
+    } finally {
+      opencodeBusy = false;
+    }
+  }
 
   /** Provider rows: every provider the backend reports, ordered by settings. */
   const providerRows = $derived.by(() => {
@@ -50,7 +105,7 @@
   }
 
   const searchText = $derived(
-    [...providerRows.map(providerName), t('settings.providers.hint'), t('settings.providerEnabled'), t('settings.sidebarItems.provider'), t('settings.openrouterKeyEnv'), t('settings.openrouterKeyEnv.hint')].join(' ')
+    [...providerRows.map(providerName), t('settings.providers.hint'), t('settings.providerEnabled'), t('settings.sidebarItems.provider'), t('settings.openrouterKeyEnv'), t('settings.openrouterKeyEnv.hint'), t('settings.opencodeKey'), t('settings.opencodeKey.hint'), t('settings.opencodeWorkspaceId'), t('settings.opencodeWorkspaceId.hint')].join(' ')
   );
 </script>
 
@@ -100,6 +155,53 @@
           value={s.openrouterKeyEnv}
           aria-label={t('settings.openrouterKeyEnv')}
           onchange={(e) => void settings.patch({ openrouterKeyEnv: e.currentTarget.value.trim() })}
+        />
+      </Field>
+    {/if}
+    {#if s.providers.opencode}
+      <Field label={t('settings.opencodeKey')} hint={t('settings.opencodeKey.hint')} wide>
+        <div class="keyrow">
+          <input
+            class="field"
+            type="password"
+            spellcheck="false"
+            autocomplete="off"
+            maxlength="512"
+            placeholder={t('settings.opencodeKey.placeholder')}
+            aria-label={t('settings.opencodeKey')}
+            bind:value={opencodeKey}
+          />
+          <button
+            class="btn primary"
+            disabled={opencodeBusy || !opencodeKey.trim()}
+            onclick={() => void saveOpenCodeKey()}
+          >
+            {opencodeBusy ? t('common.saving') : t('common.save')}
+          </button>
+          <button
+            class="btn danger"
+            disabled={opencodeBusy || !opencodeStatus.saved}
+            onclick={() => void clearOpenCodeKey()}
+          >
+            {t('common.remove')}
+          </button>
+        </div>
+        <p class="keystate">{opencodeKeyState}</p>
+        {#if opencodeError}
+          <p class="err" role="alert">{t('common.error', { message: opencodeError })}</p>
+        {/if}
+      </Field>
+      <Field label={t('settings.opencodeWorkspaceId')} hint={t('settings.opencodeWorkspaceId.hint')}>
+        <input
+          class="field"
+          type="text"
+          spellcheck="false"
+          autocomplete="off"
+          maxlength="200"
+          placeholder={t('settings.opencodeWorkspaceId.placeholder')}
+          aria-label={t('settings.opencodeWorkspaceId')}
+          value={s.opencodeWorkspaceId}
+          onchange={(e) => void settings.patch({ opencodeWorkspaceId: e.currentTarget.value.trim() })}
         />
       </Field>
     {/if}
@@ -165,5 +267,26 @@
     line-height: 1;
     color: var(--muted);
     white-space: nowrap;
+  }
+
+  /* OpenCode: the key and its two actions share one line, and wrap on a
+     narrow settings pane instead of overflowing it. */
+  .keyrow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .keyrow .field {
+    flex: 1 1 14rem;
+    min-width: 10rem;
+  }
+
+  .keystate {
+    margin: 0.375rem 0 0;
+    font-size: 0.75rem;
+    color: var(--muted);
   }
 </style>

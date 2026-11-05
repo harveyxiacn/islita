@@ -39,6 +39,20 @@ pub struct SessionListResult {
     pub limit: u32,
 }
 
+/// One finished assistant turn, as shown by the tasks plugin and used for the
+/// "task ready" notification. Titles and projects only; no prompt or response
+/// text is read.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskCompletion {
+    pub provider: String,
+    pub session_id: String,
+    pub title: String,
+    pub project: String,
+    /// Unix milliseconds of the finishing message.
+    pub finished_at: i64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMessage {

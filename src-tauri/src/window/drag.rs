@@ -101,6 +101,11 @@ pub fn snap(all: &[MonitorRect], rect: &LogicalRect, settings: &Settings) -> Opt
 
 /// `sidebar_drag`: `dx`/`dy` are CSS px travelled since `Start`.
 pub fn drag(app: &AppHandle, phase: DragPhase, dx: f64, dy: f64) {
+    // The island is pinned to the top centre; dragging it would immediately be
+    // undone by the placement watchdog (and its drop maths assumes an edge).
+    if window::settings_of(app).island {
+        return;
+    }
     match phase {
         DragPhase::Start => {
             let origin = super::sidebar::current_rect(app);

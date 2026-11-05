@@ -12,14 +12,13 @@
 //! Secrets are never printed: quotas carry no tokens, and account e-mails /
 //! names are redacted before the JSON is dumped.
 
-use ai_usage_sidebar_lib::commands::{ingest, providers, store};
-use ai_usage_sidebar_lib::model::{Bucket, HistoryQuery, ProviderQuota};
 use anyhow::Result;
+use islita_lib::commands::{ingest, providers, store};
+use islita_lib::model::{Bucket, HistoryQuery, ProviderQuota};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let work_dir =
-        std::env::temp_dir().join(format!("ai-usage-sidebar-probe-{}", std::process::id()));
+    let work_dir = std::env::temp_dir().join(format!("islita-probe-{}", std::process::id()));
     std::fs::create_dir_all(&work_dir)?;
     println!("probe workspace: {}", work_dir.display());
 
@@ -64,7 +63,7 @@ async fn main() -> Result<()> {
         project: None,
         group_by_project: false,
     };
-    let pricing = ai_usage_sidebar_lib::commands::pricing::default_table();
+    let pricing = islita_lib::commands::pricing::default_table();
     let history = store::query_history(&db, &query, &pricing)?;
     println!(
         "rows: {} (daily buckets per provider)\ntotals: {}\nbyProvider: {}",

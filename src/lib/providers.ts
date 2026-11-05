@@ -69,7 +69,10 @@ export function providerColor(colors: ColorSettings, provider: ProviderId): stri
 }
 
 /** Spellings a plain capitalise-each-word cannot produce. */
-const DISPLAY_NAMES: Readonly<Record<string, string>> = { openrouter: 'OpenRouter' };
+const DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  openrouter: 'OpenRouter',
+  opencode: 'OpenCode',
+};
 
 /**
  * Last-resort label for a provider the snapshot does not name: "github-copilot"

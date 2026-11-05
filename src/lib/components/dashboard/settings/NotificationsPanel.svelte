@@ -134,6 +134,15 @@
     />
   </Field>
 
+  <Field label={t('notif.task')} hint={t('notif.task.hint')}>
+    <Toggle
+      checked={s.taskNotifications}
+      disabled={!s.notifications}
+      label={t('notif.task')}
+      onchange={(v) => void settings.patch({ taskNotifications: v })}
+    />
+  </Field>
+
   <Field label={t('notif.levels')} wide>
     <div class="levels">
       <div class="dual">
