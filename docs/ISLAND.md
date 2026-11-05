@@ -200,7 +200,14 @@ the network, through that command.
 The pet has three bundled skins: the original inline-SVG **Mochi** mascot,
 **DeepSeek 大肥鱼** with switchable Q-version (Q版) and transformed (变身) forms,
 and **Hachiware**. Needs decay with elapsed time (offline decay is capped at
-12 hours), and feed / play / rest / pat grant XP and levels.
+12 hours), and feed / play / rest / pat grant XP and levels. `petOnDesktop`
+(toggle in the panel, off by default) additionally shows the pet as its own
+transparent, always-on-top, never-focusable window that can be dragged
+anywhere on the desktop; `petRoam` lets it wander along the work-area floor.
+The window is created at startup but stays hidden until the setting is on.
+Full-body transparent sprites for the detached window live in
+`static/pet/desktop/`; see `docs/plans/desktop-pet.md` for the art pipeline and
+the state bridge.
 `src/lib/pet/speech.ts` maps the snapshot, settings and the pet's needs to one
 situation — polling paused, a critical or warning window, a provider that went
 down, a forecast, or hungry / tired / bored / happy / ok — and then to an i18n
@@ -210,7 +217,9 @@ line; a ring's quota popover shows the same voice with an avatar and one line
 about that provider. `src/lib/pet/speech.svelte.ts` keeps the latest
 island-wide event and its unread flag: a threshold crossing or reset, a
 provider that stops being reachable, and a completed CLI turn set the rail
-dot, and opening the pet panel clears it.
+dot, and opening the pet panel clears it. With the desktop pet visible the same
+events are also forwarded to its window as `pet-event`, and its actions are
+written to the shared state and announced to the island.
 
 ### 2.4 Provider selection
 

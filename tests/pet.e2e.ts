@@ -63,4 +63,14 @@ test('desktop pet opens with stats, switches skins/forms and reacts to feeding',
     '100'
   );
   await expect(card).toHaveAttribute('src', /\/pet\/deepseek-chibi-feed\.webp$/);
+
+  // The detached window is opt-in; enabling it reveals the wander switch.
+  const desktop = panel.locator('.desktop');
+  const show = desktop.getByRole('checkbox', { name: 'Show on desktop' });
+  await expect(show).not.toBeChecked();
+  await show.check();
+  await expect(show).toBeChecked();
+  await expect(desktop.getByRole('checkbox', { name: 'Let it wander' })).toBeChecked();
+  await desktop.getByRole('checkbox', { name: 'Let it wander' }).uncheck();
+  await expect(desktop.getByRole('checkbox', { name: 'Let it wander' })).not.toBeChecked();
 });

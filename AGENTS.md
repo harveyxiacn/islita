@@ -216,6 +216,8 @@ below list every key exactly once; `pnpm check:agents`
 | `islandMargin` | `12` (0 – 64) | gap in px between the island and the top of the monitor's work area (also the side gap when it is very wide) |
 | `islandIdle` | `{"providers":[],"plugins":[]}` | what the collapsed island draws: up to 6 quota keys (`claude`, `claude@work`, …) as rings and up to 6 plugin ids (`calendar`, `mail`, …) as icons. Empty `providers` = the busiest provider and a count. Invalid ids are dropped, duplicates removed |
 | `islandAutoHide` | `false`, `true` | hide the idle island as a thin handle on the top edge; pointing at it reveals the capsule, resting on it for a moment expands the board, and it hides again after `autoHideDelayMs` |
+| `petOnDesktop` | `false`, `true` | show the pet as its own transparent, always-on-top window that can be dragged anywhere on the desktop. Opt-in; the window is created at startup and stays hidden while this is off. Also in the pet panel |
+| `petRoam` | `true`, `false` | let the desktop pet wander along the current monitor's work-area floor (idle pauses, turns, small falls). Only read while `petOnDesktop` is on; stays off while the pointer is on the pet, a menu is open or the pet sleeps |
 | `alwaysOnTop` | `true` | keep the bar above other windows |
 | `autoHide` | `false`, `true` | collapse to a thin handle when idle |
 | `autoHideDelayMs` | `800` (0 – 600000) | idle time before the bar collapses |

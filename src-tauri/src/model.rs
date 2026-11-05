@@ -620,6 +620,15 @@ pub struct Settings {
     /// reveals the capsule on hover and only expands after the pointer rests.
     #[serde(default)]
     pub island_auto_hide: bool,
+    /// Show the pet as a detached, always-on-top window that can be dragged
+    /// anywhere on the desktop. Off by default: it is a visible companion, not
+    /// part of the quota display.
+    #[serde(default)]
+    pub pet_on_desktop: bool,
+    /// Let the detached pet wander along the monitor's work area. Only read
+    /// while `pet_on_desktop` is on.
+    #[serde(default = "default_true")]
+    pub pet_roam: bool,
     pub auto_hide: bool,
     pub auto_hide_delay_ms: u64,
     /// The popover closes after this long without any pointer activity on the
@@ -772,6 +781,8 @@ impl Default for Settings {
             island_margin: 12,
             island_idle: IslandIdleSettings::default(),
             island_auto_hide: false,
+            pet_on_desktop: false,
+            pet_roam: true,
             auto_hide: false,
             auto_hide_delay_ms: 800,
             popover_timeout_sec: 10,
@@ -1256,6 +1267,7 @@ pub mod windows {
     pub const SIDEBAR: &str = "sidebar";
     pub const POPOVER: &str = "popover";
     pub const DASHBOARD: &str = "dashboard";
+    pub const PET: &str = "pet";
 }
 
 #[cfg(test)]

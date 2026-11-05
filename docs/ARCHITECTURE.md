@@ -197,6 +197,7 @@ src/                      SvelteKit frontend                     [FRONTEND]
   routes/+page.svelte     window "sidebar"  (route "/")
   routes/popover/         window "popover"  (route "/popover")
   routes/dashboard/       window "dashboard"(route "/dashboard")
+  routes/pet/             window "pet"      (route "/pet") — detached desktop companion
   lib/types.ts            canonical TS types (mirror of model.rs)  [SHARED - edit only via contract]
   lib/settings-defaults.ts contract defaults (Rust twin: impl Default for Settings)
   lib/api.ts              invoke() wrapper + browser mock         [FRONTEND owns, keep command names]
@@ -204,13 +205,13 @@ src/                      SvelteKit frontend                     [FRONTEND]
   lib/components/         Ring.svelte, MiniBar.svelte, Popover.svelte, dashboard/ (tabs, history/, sessions/, settings/ cards), ...
   lib/plugins/            island plugin contract, registry, storage and built-in panels [FRONTEND]
   lib/plugins/status.ts   service-status view model (indicator / incident normalisation) [FRONTEND]
-  lib/pet/                desktop-pet simulation, bundled skins, speech, sprite import [FRONTEND]
+  lib/pet/                desktop-pet simulation, bundled skins, speech, sprite import, desktop art mapping and the shared Mochi mascot [FRONTEND]
   lib/builtin-presets.json built-in presets, shared with the tray (Rust include)
   lib/providers.ts        provider-agnostic frontend helpers      [FRONTEND]
 src-tauri/
   src/lib.rs, main.rs     builder wiring, plugins, invoke_handler list; main.rs also handles `--print` first [PLATFORM]
   src/cli.rs              `islita --print`: reads snapshot.json, prints, exits (no window)  [BACKEND]
-  src/window/             sidebar/popover/dashboard window logic, drag.rs, hover.rs, monitors.rs, linux.rs [PLATFORM]
+  src/window/             sidebar/popover/dashboard/pet window logic, drag.rs, hover.rs, monitors.rs, linux.rs [PLATFORM]
     tray.rs               tray icon + menu (usage lines, presets, focus, pause polling)
     tray_status.rs        pure tray content: usage lines, tooltip, severity dot, percent icon, system language
     tray_presets.rs       pure helpers behind the Presets submenu
@@ -500,6 +501,11 @@ Semantics, limits and privacy rules are in §11; the contract is the signature.
 | `get_monitors` | – | `MonitorInfo[]` |
 | `get_shortcut_status` | – | `ShortcutStatus` — why a configured global shortcut is not active (`null` = registered, or disabled because the setting is empty) |
 | `get_shortcut_registrations` | – | `ShortcutRegistrations` — per shortcut `{state: "off" \| "registered" \| "failed" \| "unsupported", message}`; `unsupported` = native Wayland session |
+| `pet_ready` | `x: number \| null, y: number \| null` | the pet page loaded: clamp the saved logical position to the current work area, resize from `scale`, mark the window ready and show it when `petOnDesktop` is on |
+| `pet_where` | – | current logical top-left of the pet window (`[x, y]`), or null; reads the OS position while visible so a native drag is reflected |
+| `pet_set_dragging` | `dragging: boolean` | stop/resume the wander loop while the pointer holds the pet; a release adds a 600 ms settle pause |
+| `pet_set_roaming` | `allowed: boolean` | the page's temporary veto (asleep, pointer over the pet, menu open); does not override `petRoam` |
+| `pet_move_by` | `dx: number, dy: number` (logical px) | JS drag fallback: move the window, clamp to the union of all work areas, keep the page informed; does not clear `dragging` (the page owns it) |
 | `quit_app` | – | exit |
 | `debug_log` | `msg: string` | writes `[webview] <msg>` to the log in debug builds only; a no-op in release builds |
 
@@ -515,6 +521,15 @@ Semantics, limits and privacy rules are in §11; the contract is the signature.
 | `dashboard-navigate` | `{ tab: string }` | platform |
 | `update-status` | `UpdateStatus` | updater, after every state change and (throttled to ~4/s) while an install downloads (`downloaded` / `total` bytes) |
 | `price-update-status` | `PriceUpdateStatus` | pricing backend, after a source check, apply or status change |
+| `pet-motion` | `{moving, dir, falling, x, y}` | platform pet loop (`emit_to("pet")`), at most every 450 ms while unchanged, immediately when the gait changes |
+
+Window-to-window pet events (not emitted by the Rust backend):
+
+| event | target | payload | purpose |
+|---|---|---|---|
+| `pet-state` | `sidebar` / `pet` | `{ state: PetState, action?: PetAction }` | actions and skin/name changes; the receiver adopts only a strictly newer `lastSeen`, so a copy echoed back cannot undo newer state |
+| `pet-state-request` | `sidebar` | – | the pet window asks for the saved state when plugin storage is not shared |
+| `pet-event` | `pet` | `PetSituation` | `warn` / `critical` / `reset` ring crossings, `providerDown` and `taskDone`, mirrored from the island's own detection |
 
 Each window's snapshot store also reconciles through `get_snapshot` every
 30 seconds and when its document becomes visible, gains focus or is restored.
@@ -529,6 +544,7 @@ store consumer removes the event listener, timer and lifecycle handlers.
 |---|---|---|
 | `sidebar` | `/` | frameless, transparent, always on top, skip taskbar, not resizable, visible on all workspaces, no shadow |
 | `popover` | `/popover` | same style, hidden by default, focus does not steal from the active app |
+| `pet` | `/pet` | transparent, frameless, always on top, skip taskbar, not focusable, visible on all workspaces, hidden until the page is ready and `petOnDesktop` is on; sized `240×300 × scale` CSS px |
 | `dashboard` | `/dashboard` | normal decorated window, hidden by default, min 880×600 |
 
 Linux notes: GNOME Wayland does not allow clients to position windows or stay

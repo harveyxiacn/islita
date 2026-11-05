@@ -192,6 +192,11 @@ pub fn run() {
             window::toggle_sidebar,
             window::quit_app,
             window::debug_log,
+            window::pet_ready,
+            window::pet_where,
+            window::pet_set_dragging,
+            window::pet_set_roaming,
+            window::pet_move_by,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

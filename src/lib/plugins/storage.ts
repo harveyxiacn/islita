@@ -6,9 +6,14 @@
 // storage quota error must leave the island usable rather than crash it.
 const PREFIX = 'island.plugin.';
 
+/** The full localStorage key of one plugin; also what a cross-window `storage` event reports. */
+export function pluginStorageKey(plugin: string): string {
+  return PREFIX + plugin;
+}
+
 export function readPluginState<T>(plugin: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(PREFIX + plugin);
+    const raw = localStorage.getItem(pluginStorageKey(plugin));
     if (raw === null) return fallback;
     return JSON.parse(raw) as T;
   } catch {
@@ -18,7 +23,7 @@ export function readPluginState<T>(plugin: string, fallback: T): T {
 
 export function writePluginState(plugin: string, value: unknown): void {
   try {
-    localStorage.setItem(PREFIX + plugin, JSON.stringify(value));
+    localStorage.setItem(pluginStorageKey(plugin), JSON.stringify(value));
     announce(plugin);
   } catch {
     // storage disabled or full: the plugin keeps working in memory
@@ -36,7 +41,7 @@ function announce(plugin: string): void {
 
 export function removePluginState(plugin: string): void {
   try {
-    localStorage.removeItem(PREFIX + plugin);
+    localStorage.removeItem(pluginStorageKey(plugin));
     announce(plugin);
   } catch {
     // ignore

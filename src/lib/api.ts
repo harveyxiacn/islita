@@ -84,6 +84,17 @@ export async function listen<T>(event: string, handler: (payload: T) => void): P
   return (await import('./mock')).mockListen<T>(event, handler);
 }
 
+/**
+ * Send an event to one other window. A no-op in the browser preview, where
+ * there is no window to address; callers that need the same-window fallback
+ * use localStorage directly.
+ */
+export async function emitWindowEvent<T>(target: string, event: string, payload?: T): Promise<void> {
+  if (!isTauri()) return;
+  const { emitTo } = await import('@tauri-apps/api/event');
+  await emitTo(target, event, payload);
+}
+
 // ---- backend ----
 export const getSnapshot = () => invoke<AppSnapshot>('get_snapshot');
 export const refreshNow = (provider?: ProviderId) => invoke<AppSnapshot>('refresh_now', { provider: provider ?? null });
@@ -275,6 +286,20 @@ export const getMonitors = () => invoke<MonitorInfo[]>('get_monitors');
 /** Show or hide the whole bar window (the tray's "Show/Hide sidebar"). */
 export const toggleSidebar = () => invoke<void>('toggle_sidebar');
 export const quitApp = () => invoke<void>('quit_app');
+
+// ---- detached desktop pet ----
+/** The page loaded; place at the saved logical spot and reveal if enabled. */
+export const petReady = (x: number | null, y: number | null) =>
+  invoke<void>('pet_ready', { x, y });
+/** Current logical top-left; null before the window is placed. */
+export const petWhere = () => invoke<[number, number] | null>('pet_where');
+/** While true the wander loop stands still (pointer held, menu open). */
+export const petSetDragging = (dragging: boolean) =>
+  invoke<void>('pet_set_dragging', { dragging });
+/** Whether the pet may wander right now (asleep = false). */
+export const petSetRoaming = (allowed: boolean) => invoke<void>('pet_set_roaming', { allowed });
+/** JS drag fallback; dx/dy are logical pixels. */
+export const petMoveBy = (dx: number, dy: number) => invoke<void>('pet_move_by', { dx, dy });
 
 // ---- events ----
 export const onSnapshotUpdated = (h: (s: AppSnapshot) => void) => listen<AppSnapshot>('snapshot-updated', h);

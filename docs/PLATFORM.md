@@ -374,9 +374,10 @@ which is exactly what the settings field then says.
 |---|---|---|
 | `sidebar` | `/` | frameless, transparent, no shadow, skip taskbar, sticky, `focus: false`, created hidden |
 | `popover` | `/popover` | same, plus `set_focusable(false)`; hidden unless a ring is hovered or pinned |
+| `pet` | `/pet` | same overlay style, `set_focusable(false)`, hidden until its page calls `pet_ready`; `petOnDesktop` reveals it. Rust owns placement, work-area clamping, dragging and the 33 ms wander loop, and emits `pet-motion`; the page draws the sprite |
 | `dashboard` | `/dashboard` | normal decorated window, created hidden, min 880×600 |
 
-`CloseRequested` is prevented on all three: the overlays cannot be closed at all
+`CloseRequested` is prevented on all four: the overlays cannot be closed at all
 and the dashboard hides, so the app keeps living in the tray. A second launch
 (single-instance plugin) restores the sidebar and focuses the dashboard instead
 of starting a second bar. An already visible sidebar is hidden and shown once

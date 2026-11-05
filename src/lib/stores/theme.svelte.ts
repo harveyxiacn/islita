@@ -11,7 +11,7 @@ import { providerColor, providerColorKeys } from '$lib/providers';
 import { clampSize, defaultColors } from './settings.svelte';
 import type { ProviderId, Settings, SizeSettings } from '$lib/types';
 
-type WindowKind = 'sidebar' | 'popover' | 'dashboard';
+type WindowKind = 'sidebar' | 'popover' | 'dashboard' | 'pet';
 
 let media: MediaQueryList | null = null;
 let mediaHandler: (() => void) | null = null;

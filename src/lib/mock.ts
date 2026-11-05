@@ -230,6 +230,8 @@ export const mockSettings: Settings = {
   islandMargin: 12,
   islandIdle: { providers: [], plugins: [] },
   islandAutoHide: false,
+  petOnDesktop: false,
+  petRoam: true,
   autoHide: false,
   autoHideDelayMs: 800,
   popoverTimeoutSec: 10,

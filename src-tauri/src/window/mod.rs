@@ -21,6 +21,7 @@ pub mod hover;
 #[cfg(target_os = "linux")]
 pub mod linux;
 pub mod monitors;
+pub mod pet;
 pub mod popover;
 pub mod shortcuts;
 pub mod sidebar;
@@ -115,6 +116,8 @@ pub struct PlatformState {
     pub inner: Mutex<Inner>,
     /// Tray items are updated in place when language or auto-hide changes.
     pub tray_items: Mutex<Option<tray::MenuItems>>,
+    /// Detached desktop pet: position, size and wander bookkeeping.
+    pub pet: Mutex<pet::PetWindowState>,
     /// Last stacking flags applied per window. Windows honours
     /// `SetWindowPos(HWND_TOPMOST)` with a full compositor update, so asking
     /// for the same topmost state on every relayout can flash the transparent
@@ -419,6 +422,8 @@ pub fn setup(app: &AppHandle) -> anyhow::Result<()> {
         );
     }
 
+    pet::setup(app);
+
     install_close_handlers(app);
     sidebar::place(app);
     sidebar::start_watchdogs(app);
@@ -478,7 +483,7 @@ pub fn setup(app: &AppHandle) -> anyhow::Result<()> {
 fn install_close_handlers(app: &AppHandle) {
     // Overlay windows can never be closed; the dashboard hides instead so the
     // app keeps running in the tray.
-    for label in [windows::SIDEBAR, windows::POPOVER] {
+    for label in [windows::SIDEBAR, windows::POPOVER, windows::PET] {
         if let Some(win) = app.get_webview_window(label) {
             win.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { api, .. } = event {
@@ -506,6 +511,7 @@ pub fn apply_settings(app: &AppHandle) {
     hover::settings_changed(app);
     sidebar::place(app);
     popover::reposition(app);
+    pet::apply(app, &settings);
     for label in [windows::SIDEBAR, windows::POPOVER] {
         if let Some(win) = app.get_webview_window(label) {
             apply_stacking(&win, settings.always_on_top);
@@ -674,5 +680,41 @@ pub async fn toggle_sidebar(app: AppHandle) -> Result<(), String> {
 pub async fn quit_app(app: AppHandle) -> Result<(), String> {
     log::info!("quit requested");
     app.exit(0);
+    Ok(())
+}
+
+// ------------------------------------------------------------ desktop pet --
+
+/// The pet page has mounted and knows where it wants to sit.
+#[tauri::command]
+pub async fn pet_ready(app: AppHandle, x: Option<f64>, y: Option<f64>) -> Result<(), String> {
+    pet::ready(&app, x, y);
+    Ok(())
+}
+
+/// Current logical top-left of the pet window, or `None` before placement.
+#[tauri::command]
+pub async fn pet_where(app: AppHandle) -> Option<(f64, f64)> {
+    pet::where_is(&app)
+}
+
+/// A drag started / ended in the page. While dragging the pet never wanders.
+#[tauri::command]
+pub async fn pet_set_dragging(app: AppHandle, dragging: bool) -> Result<(), String> {
+    pet::set_dragging(&app, dragging);
+    Ok(())
+}
+
+/// The page says whether the pet may walk right now (asleep = false).
+#[tauri::command]
+pub async fn pet_set_roaming(app: AppHandle, allowed: bool) -> Result<(), String> {
+    pet::set_roaming(&app, allowed);
+    Ok(())
+}
+
+/// JS-side drag fallback: move the window by a logical delta.
+#[tauri::command]
+pub async fn pet_move_by(app: AppHandle, dx: f64, dy: f64) -> Result<(), String> {
+    pet::move_by(&app, dx, dy);
     Ok(())
 }

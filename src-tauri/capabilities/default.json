@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Minimal permission set for the sidebar, popover and dashboard windows. Everything the UI does goes through the app's own commands; these are only the core APIs the frontend touches directly.",
-  "windows": ["sidebar", "popover", "dashboard"],
+  "windows": ["sidebar", "popover", "dashboard", "pet"],
   "permissions": [
     "core:default",
     "core:event:default",

@@ -277,6 +277,10 @@ export interface Settings {
   islandIdle: IslandIdleSettings;
   /** Hide the idle island as a thin handle on the top edge; hover to reveal. */
   islandAutoHide: boolean;
+  /** Show the pet as a detached, draggable window on the desktop. */
+  petOnDesktop: boolean;
+  /** Let the detached pet wander along the monitor's work area. */
+  petRoam: boolean;
   autoHide: boolean;
   autoHideDelayMs: number;
   /** close the popover after this many seconds without pointer activity; 0 = never */

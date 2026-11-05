@@ -47,6 +47,10 @@ export const defaultSettings: Settings = {
   /** collapsed island content; empty providers = busiest summary */
   islandIdle: { providers: [], plugins: [] },
   islandAutoHide: false,
+  /** detached desktop companion; opt-in because it is always visible */
+  petOnDesktop: false,
+  /** let the desktop pet walk along the work-area floor */
+  petRoam: true,
   autoHide: false,
   autoHideDelayMs: 800,
   popoverTimeoutSec: 10,

@@ -23,11 +23,12 @@ const config = {
       // prerendered shell, not the catch-all SPA fallback).
       fallback: "200.html",
     }),
-    // The three Tauri windows load build/index.html, build/popover.html and
-    // build/dashboard.html directly. Nothing links between them, so the
-    // prerender crawler cannot discover /popover and /dashboard on its own.
+    // The four Tauri windows load build/index.html, build/popover.html,
+    // build/dashboard.html and build/pet.html directly. Nothing links between
+    // them, so the prerender crawler cannot discover /popover, /dashboard or
+    // /pet on its own.
     prerender: {
-      entries: ["/", "/popover", "/dashboard"],
+      entries: ["/", "/popover", "/dashboard", "/pet"],
     },
   },
 };

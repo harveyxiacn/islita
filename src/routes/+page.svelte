@@ -37,7 +37,9 @@
   import ProviderLogo from '$lib/components/ProviderLogo.svelte';
   import { dragHandle, HEARTBEAT_MS, measureSize, observeSize, throttle, type DragPhase, type SizeReport } from '$lib/actions';
   import {
+    emitWindowEvent,
     hoverReport,
+    listen,
     onSidebarState,
     openDashboard,
     onTaskCompleted,
@@ -55,12 +57,13 @@
   import { detectRingEvents, levelsOf, windowKey, type RingEvent, type RingEventKind, type WindowLevel } from '$lib/ring-events';
   import { handlePeak, handleSegments, labelLayout, type LabelLayout } from '$lib/sidebar-visuals';
   import { t, tDyn } from '$lib/i18n/i18n.svelte';
-  import { PET_PLUGIN_ID, parsePetState, type PetState } from '$lib/pet/pet';
+  import { PET_PLUGIN_ID, parsePetState, type PetAction, type PetState } from '$lib/pet/pet';
+  import { isPetAction } from '$lib/pet/desktop';
   import { petVoice, quotaSituation, sayKey, speechAvatar, type PetVoice } from '$lib/pet/speech';
   import { petSpeech } from '$lib/pet/speech.svelte';
   import { attention } from '$lib/plugins/attention.svelte';
   import { pluginById, ISLAND_PLUGINS } from '$lib/plugins/registry';
-  import { readPluginState } from '$lib/plugins/storage';
+  import { readPluginState, writePluginState } from '$lib/plugins/storage';
   import { handleColorOf, rings, type RingItem } from '$lib/stores/rings.svelte';
   import { settings } from '$lib/stores/settings.svelte';
   import { snapshot } from '$lib/stores/snapshot.svelte';
@@ -342,6 +345,9 @@
       if (savedPetVoice()) {
         for (const event of events) petSpeech.note(event.kind);
       }
+      if (s.petOnDesktop) {
+        for (const event of events) void emitWindowEvent('pet', 'pet-event', event.kind);
+      }
       if (!animate) return;
       for (const e of events) fx[e.key] = { kind: e.kind, id: ++fxSeq };
       clearTimeout(fxTimer);
@@ -369,6 +375,15 @@
           }
         }
       }
+      if (prevStatuses && s.petOnDesktop) {
+        for (const [key, status] of next) {
+          const before = prevStatuses!.get(key);
+          if (before === 'ok' && status !== 'ok' && status !== 'disabled') {
+            void emitWindowEvent('pet', 'pet-event', 'providerDown');
+            break;
+          }
+        }
+      }
       prevStatuses = next;
     });
   });
@@ -386,11 +401,34 @@
     // custom imported sprite still speaks in its selected skin's voice.
     void onTaskCompleted(() => {
       if (savedPetVoice()) petSpeech.note('taskDone');
+      if (s.petOnDesktop) void emitWindowEvent('pet', 'pet-event', 'taskDone');
     }).then((u) => (disposed ? u() : (unTask = u)));
+
+    // The detached pet window owns the same localStorage entry. It sends every
+    // action here so the island can speak and a mounted panel can adopt the
+    // newer state; `lastSeen` makes the two directions idempotent.
+    let unPetState: Unlisten | null = null;
+    let unPetRequest: Unlisten | null = null;
+    void listen<{ state?: PetState; action?: PetAction }>('pet-state', (payload) => {
+      if (!payload || typeof payload !== 'object' || !payload.state) return;
+      const incoming = parsePetState(payload.state, Date.now());
+      const current = savedPet();
+      if (current && incoming.lastSeen <= current.lastSeen) return;
+      writePluginState(PET_PLUGIN_ID, incoming);
+      if (isPetAction(payload.action)) petSpeech.note(payload.action);
+    }).then((u) => (disposed ? u() : (unPetState = u)));
+    void listen<null>('pet-state-request', () => {
+      const raw = readPluginState<unknown>(PET_PLUGIN_ID, null);
+      if (raw === null) return;
+      void emitWindowEvent('pet', 'pet-state', { state: parsePetState(raw, Date.now()) });
+    }).then((u) => (disposed ? u() : (unPetRequest = u)));
+
     return () => {
       disposed = true;
       un?.();
       unTask?.();
+      unPetState?.();
+      unPetRequest?.();
       clearTimeout(fxTimer);
       clearTimeout(islandCollapseTimer);
       clearTimeout(panelCloseTimer);
