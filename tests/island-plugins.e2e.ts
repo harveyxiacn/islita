@@ -96,6 +96,26 @@ test('the island rail exposes every built-in plugin and imports a calendar', asy
   expect(errors).toEqual([]);
 });
 
+test('the island expands and collapses around its horizontal centre', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 520 });
+  await openIsland(page);
+  const centre = () =>
+    page.locator('.stage').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.left + r.width / 2;
+    });
+  // `openIsland` leaves the pointer on the expanded row; moving off collapses it.
+  await page.mouse.move(1190, 500);
+  await expect(page.locator('.pill.island')).toHaveClass(/island-idle/);
+  await expect.poll(async () => Math.abs((await centre()) - 600)).toBeLessThanOrEqual(1);
+  await page.locator('.stage').hover();
+  await expect(page.locator('.pill.island')).toHaveClass(/island-open/);
+  await expect.poll(async () => Math.abs((await centre()) - 600)).toBeLessThanOrEqual(1);
+  await page.mouse.move(1190, 500);
+  await expect(page.locator('.pill.island')).toHaveClass(/island-idle/);
+  await expect.poll(async () => Math.abs((await centre()) - 600)).toBeLessThanOrEqual(1);
+});
+
 test('local mail shows unread headers without a body', async ({ page }) => {
   await openIsland(page);
   await openTool(page, 'Mail');

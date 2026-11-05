@@ -681,6 +681,19 @@
     height: max-content;
   }
 
+  /* The window is resized and re-centred by Rust a beat after the content
+     changes, so during the transition it can still be wider (collapsing) or
+     narrower (expanding) than the island. Centring the stage inside that
+     transient viewport keeps both edges symmetric: the capsule grows out of
+     and shrinks back into the middle instead of hugging the old window's left
+     edge and then jumping to the centre when the resize lands. */
+  .stage[data-island] {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
   .pill {
     display: flex;
     flex-direction: column;
