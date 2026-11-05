@@ -191,6 +191,7 @@ export const mockSettings: Settings = {
   monitor: null,
   island: false,
   islandMargin: 12,
+  islandIdle: { providers: [], plugins: [] },
   autoHide: false,
   autoHideDelayMs: 800,
   popoverTimeoutSec: 10,

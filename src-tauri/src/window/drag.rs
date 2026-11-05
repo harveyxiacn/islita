@@ -119,7 +119,12 @@ pub fn drag(app: &AppHandle, phase: DragPhase, dx: f64, dy: f64) {
         }
         DragPhase::End => {
             let rect = dragged_rect(app, dx, dy);
-            window::with_state(app, |inner| inner.drag_origin = None);
+            window::with_state(app, |inner| {
+                inner.drag_origin = None;
+                // The window was moved by hand; forget the cached placement so
+                // the snap-back really reaches the OS.
+                inner.last_place = None;
+            });
             if let Some(rect) = rect {
                 drop_at(app, rect);
             }
@@ -127,7 +132,10 @@ pub fn drag(app: &AppHandle, phase: DragPhase, dx: f64, dy: f64) {
             super::sidebar::place(app);
         }
         DragPhase::Cancel => {
-            window::with_state(app, |inner| inner.drag_origin = None);
+            window::with_state(app, |inner| {
+                inner.drag_origin = None;
+                inner.last_place = None;
+            });
             super::sidebar::place(app);
         }
     }

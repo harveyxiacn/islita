@@ -116,6 +116,101 @@ test('the island expands and collapses around its horizontal centre', async ({ p
   await expect.poll(async () => Math.abs((await centre()) - 600)).toBeLessThanOrEqual(1);
 });
 
+test('the capsule morphs over multiple frames instead of swapping width', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 520 });
+  await openIsland(page);
+  // Start from a settled idle capsule.
+  await page.mouse.move(1190, 500);
+  await expect(page.locator('.pill.island')).toHaveClass(/island-idle/);
+  await page.waitForTimeout(650);
+
+  const sampleWidths = (ms: number) =>
+    page.evaluate(
+      (duration) =>
+        new Promise<number[]>((resolve) => {
+          const pill = document.querySelector('.pill.island')!;
+          const t0 = performance.now();
+          const widths: number[] = [];
+          const tick = () => {
+            widths.push(Math.round(pill.getBoundingClientRect().width));
+            if (performance.now() - t0 < duration) requestAnimationFrame(tick);
+            else resolve(widths);
+          };
+          requestAnimationFrame(tick);
+        }),
+      ms
+    );
+
+  const expanding = sampleWidths(1100);
+  await page.mouse.move(600, 20);
+  const open = await expanding;
+  await expect(page.locator('.pill.island')).toHaveClass(/island-open/);
+  const openWidth = Math.max(...open);
+  const idleWidth = Math.min(...open);
+  expect(openWidth - idleWidth).toBeGreaterThan(100);
+  expect(new Set(open).size).toBeGreaterThanOrEqual(8);
+
+  await page.waitForTimeout(300);
+  const collapsing = sampleWidths(1200);
+  await page.mouse.move(1190, 500);
+  const closed = await collapsing;
+  await expect(page.locator('.pill.island')).toHaveClass(/island-idle/);
+  expect(Math.max(...closed) - Math.min(...closed)).toBeGreaterThan(100);
+  expect(new Set(closed).size).toBeGreaterThanOrEqual(8);
+});
+
+test('the idle island shows the chosen providers and plugin icons', async ({ page }) => {
+  const settings = encodeURIComponent(
+    JSON.stringify({
+      island: true,
+      islandIdle: { providers: ['claude'], plugins: ['mail', 'calendar'] },
+    })
+  );
+  await page.goto(`/?settings=${settings}`);
+  await expect(page.locator('.stage')).toHaveAttribute('data-island', 'true');
+  await expect(page.locator('.pill.island')).toHaveClass(/island-idle/);
+
+  // One chosen provider ring and two informational plugin icons, no full rail.
+  await expect(page.locator('.idle-layer .slot')).toHaveCount(1);
+  await expect(page.locator('.idle-layer .idle-tool')).toHaveCount(2);
+  await expect(page.locator('.idle-layer .island-tools')).toHaveCount(0);
+
+  // Hovering morphs to the open board, where the plugin rail is a 5-column
+  // grid: ten plugins occupy two rows rather than one long strip.
+  await page.locator('.stage').hover();
+  await expect(page.locator('.pill.island')).toHaveClass(/island-open/);
+  await expect(page.locator('.island-tools .tool')).toHaveCount(10);
+  const grid = await page.locator('.island-tools').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      columns: style.gridTemplateColumns.split(' ').length,
+      rows: [...el.children].map((child) => (child as HTMLElement).offsetTop),
+    };
+  });
+  expect(grid.columns).toBe(5);
+  expect(new Set(grid.rows.slice(0, 5)).size).toBe(1);
+  expect(new Set(grid.rows.slice(5)).size).toBe(1);
+  expect(grid.rows[5]).toBeGreaterThan(grid.rows[0]);
+});
+
+test('rapid hover in and out settles on the idle island without drifting', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 520 });
+  await openIsland(page);
+  // Leave and re-enter faster than the 360 ms collapse grace, then leave for
+  // good: state must not stick expanded and the capsule must stay centred.
+  for (let i = 0; i < 3; i += 1) {
+    await page.mouse.move(1190, 500);
+    await page.mouse.move(600, 20);
+  }
+  await page.mouse.move(1190, 500);
+  await expect(page.locator('.pill.island')).toHaveClass(/island-idle/);
+  const centre = await page.locator('.stage').evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return r.left + r.width / 2;
+  });
+  expect(Math.abs(centre - 600)).toBeLessThanOrEqual(1);
+});
+
 test('local mail shows unread headers without a body', async ({ page }) => {
   await openIsland(page);
   await openTool(page, 'Mail');

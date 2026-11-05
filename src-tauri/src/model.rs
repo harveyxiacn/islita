@@ -432,6 +432,19 @@ impl Default for SidebarItems {
     }
 }
 
+/// What the collapsed island draws. Both lists are ordered and small: the
+/// capsule is meant to stay a glanceable pill, not a second dashboard.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct IslandIdleSettings {
+    /// Quota keys (`claude`, `claude@work`, …) shown while the island is idle.
+    /// Empty means the busiest provider plus a "+N" count, the original
+    /// behaviour.
+    pub providers: Vec<String>,
+    /// Plugin ids (`calendar`, `mail`, …) shown as compact icons while idle.
+    pub plugins: Vec<String>,
+}
+
 /// Wire format of the webhook channel.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -596,6 +609,10 @@ pub struct Settings {
     /// Gap between the island and the top of the monitor's work area, px.
     #[serde(default = "default_island_margin")]
     pub island_margin: u32,
+    /// Providers and plugins shown by the collapsed island. Empty provider
+    /// list = the busiest provider summary.
+    #[serde(default)]
+    pub island_idle: IslandIdleSettings,
     pub auto_hide: bool,
     pub auto_hide_delay_ms: u64,
     /// The popover closes after this long without any pointer activity on the
@@ -746,6 +763,7 @@ impl Default for Settings {
             monitor: None,
             island: false,
             island_margin: 12,
+            island_idle: IslandIdleSettings::default(),
             auto_hide: false,
             auto_hide_delay_ms: 800,
             popover_timeout_sec: 10,

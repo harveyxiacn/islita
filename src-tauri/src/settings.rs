@@ -90,6 +90,7 @@ pub fn merge(base: &Settings, patch: &Value) -> Settings {
                 | "sizes"
                 | "thresholds"
                 | "sidebarItems"
+                | "islandIdle"
                 | "subscriptionUsd"
                 | "webhook"
         ) {
@@ -185,6 +186,31 @@ fn hex_or(value: &str, fallback: &str) -> String {
     }
 }
 
+/// Ids accepted by `islandIdle`: quota keys (`claude@work`) and plugin ids
+/// (`calendar`). The frontend ignores ids it does not know, so the shape check
+/// is enough and keeps a settings typo from becoming an arbitrary string.
+fn sanitize_island_ids(ids: Vec<String>, max: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(ids.len().min(max));
+    for raw in ids {
+        let id = raw.trim();
+        if id.is_empty()
+            || id.len() > 64
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'@' | b'.'))
+        {
+            continue;
+        }
+        if !out.iter().any(|seen| seen == id) {
+            out.push(id.to_string());
+        }
+        if out.len() == max {
+            break;
+        }
+    }
+    out
+}
+
 /// Force every value into its supported range (ARCHITECTURE §7).
 pub fn clamp(mut s: Settings) -> Settings {
     s.opacity = clamp_f64(s.opacity, 0.3, 1.0, 1.0);
@@ -192,6 +218,8 @@ pub fn clamp(mut s: Settings) -> Settings {
     s.refresh_interval_sec = s.refresh_interval_sec.max(15);
     s.collapsed_width = s.collapsed_width.clamp(2, 24);
     s.island_margin = s.island_margin.min(64);
+    s.island_idle.providers = sanitize_island_ids(std::mem::take(&mut s.island_idle.providers), 6);
+    s.island_idle.plugins = sanitize_island_ids(std::mem::take(&mut s.island_idle.plugins), 6);
     s.auto_hide_delay_ms = s.auto_hide_delay_ms.min(600_000);
     s.popover_timeout_sec = s.popover_timeout_sec.min(600);
     // 0 = off, -1 = until turned off, otherwise an epoch-ms deadline.
@@ -799,6 +827,44 @@ mod tests {
             merged.sidebar_items.five_hour && merged.sidebar_items.more_button,
             "untouched members survive the per-key merge"
         );
+    }
+
+    #[test]
+    fn island_idle_merges_per_list_and_sanitises_ids() {
+        let base = Settings::default();
+        assert!(base.island_idle.providers.is_empty());
+        let merged = merge(
+            &base,
+            &json!({"islandIdle": {"providers": ["claude", "claude", "codex@work", "bad id", "!!!"]}}),
+        );
+        assert_eq!(merged.island_idle.providers, ["claude", "codex@work"]);
+        assert!(
+            merged.island_idle.plugins.is_empty(),
+            "patching one list keeps the other"
+        );
+
+        let merged = merge(
+            &merged,
+            &json!({"islandIdle": {"plugins": ["mail", "calendar", "mail"]}}),
+        );
+        assert_eq!(merged.island_idle.plugins, ["mail", "calendar"]);
+        assert_eq!(
+            merged.island_idle.providers,
+            ["claude", "codex@work"],
+            "the provider list survived the plugin patch"
+        );
+
+        // more than six entries are cut off; the order is kept
+        let many = (0..9).map(|i| format!("p{i}")).collect::<Vec<_>>();
+        let idles = clamp(Settings {
+            island_idle: crate::model::IslandIdleSettings {
+                providers: many,
+                plugins: vec![],
+            },
+            ..base
+        });
+        assert_eq!(idles.island_idle.providers.len(), 6);
+        assert_eq!(idles.island_idle.providers[0], "p0");
     }
 
     #[test]

@@ -44,6 +44,8 @@ export const defaultSettings: Settings = {
   island: false,
   /** gap between the island and the top of the work area, px */
   islandMargin: 12,
+  /** collapsed island content; empty providers = busiest summary */
+  islandIdle: { providers: [], plugins: [] },
   autoHide: false,
   autoHideDelayMs: 800,
   popoverTimeoutSec: 10,

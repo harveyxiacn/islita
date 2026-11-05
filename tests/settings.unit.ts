@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mergeSettings, SettingsWriter, type SettingsPatch } from '../src/lib/settings-writer';
 import { mockSettings } from '../src/lib/mock';
+import { defaultSettings } from '../src/lib/settings-defaults';
 import type { Settings } from '../src/lib/types';
 
 function deferred<T>() {
@@ -64,4 +65,13 @@ test('external window events survive a stale save response', async () => {
   await done;
   expect(visible.edge).toBe('left');
   expect(visible.theme).toBe('light');
+});
+
+test('island idle lists merge member by member and keep the other list', () => {
+  const withProviders = mergeSettings(defaultSettings, { islandIdle: { providers: ['claude'] } });
+  expect(withProviders.islandIdle).toEqual({ providers: ['claude'], plugins: [] });
+  const withPlugins = mergeSettings(withProviders, { islandIdle: { plugins: ['mail'] } });
+  expect(withPlugins.islandIdle).toEqual({ providers: ['claude'], plugins: ['mail'] });
+  // A whole-list replacement is still possible and is what the UI sends.
+  expect(mergeSettings(withPlugins, { islandIdle: { providers: [] } }).islandIdle.providers).toEqual([]);
 });

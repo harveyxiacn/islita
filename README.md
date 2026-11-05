@@ -35,8 +35,9 @@ interrupting you: *how much of my Claude / Codex quota is left*, and *what else
 needs my attention* — mail, calendar, notes, files, music and finished tasks.
 The island is opt-in; without it the app is the original edge bar.
 
-* An optional **top-centre island** that idles as a single capsule, expands
-  into the provider row and a tool rail, and hosts ten built-in plugin panels.
+* An optional **top-centre island** that idles as a customisable capsule (the
+  busiest provider by default, or up to six chosen providers and plugin icons),
+  morphs into a two-row board and hosts ten built-in plugin panels.
 * One **progress ring per provider** (or one per window in `ringMode: "all"`).
 * Hovering a ring opens a **popover** with every rate-limit window — 5-hour,
   weekly, per-model — plus its reset time. The popover never steals keyboard focus.
@@ -55,7 +56,7 @@ The island is opt-in; without it the app is the original edge bar.
 | | |
 |---|---|
 | Edge docking | Any of the four screen edges, positioned along it (start / centre / end) with a pixel offset, on any monitor. Top and bottom turn the bar into a horizontal strip |
-| Dynamic island | Opt-in (`island: true`): a rounded capsule at the top centre of the monitor. It idles as one summary ring, expands on hover/focus into the full row, and grows a plugin rail (providers, calendar reminders, mail, WeChat, completed tasks, sticky note, recent sessions, music + LRC, focus timer, file drop) plus animated panels. See [docs/ISLAND.md](docs/ISLAND.md) |
+| Dynamic island | Opt-in (`island: true`): a rounded capsule at the top centre of the monitor. It idles with the busiest provider, or with up to six providers and plugin icons chosen in Settings → Position, then morphs into a two-row board with the full plugin rail (providers, calendar reminders, mail, WeChat, completed tasks, sticky note, recent sessions, music + LRC, focus timer, file drop) and animated panels. See [docs/ISLAND.md](docs/ISLAND.md) |
 | Island plugins | Ten built-in panels. Calendar imports a local `.ics` (with simple recurrence expansion); mail reads headers from a local `.eml`/Maildir folder or an opt-in cloud account; the Windows-only WeChat panel mirrors the visible conversation list read-only through UI Automation; music plays local audio with synced LRC lyrics; file drop copies regular files into a private dropbox. Local mail and a soon-starting event show a badge on the rail. Message bodies are never read and nothing is uploaded. |
 | Cloud mail (opt-in) | In the Mail panel's **Accounts** tab, connect Gmail or Outlook with OAuth, or any IMAP host with an app password. Requests read-only mail access and lists unread inbox headers only. Tokens and passwords stay in the OS keychain, never in settings; removing an account deletes them. OAuth uses your own Google/Microsoft client registration, explained in the setup form. |
 | Drag to move | Drag the bar anywhere: it snaps to the nearest screen edge of the monitor you drop it on and remembers its position along that edge |
@@ -507,7 +508,7 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 | | |
 |---|---|
 | 边缘吸附 | 四条屏幕边缘任选，沿边缘对齐（起始/居中/末端）并可设像素偏移，可指定显示器；贴靠顶部或底部时侧栏会变成横条 |
-| 灵动岛 | 可选（`island: true`）：在显示器顶部中央显示圆角胶囊。空闲时只显示最忙服务商的一个摘要圆环，悬停或键盘聚焦后展开为完整一排，并出现插件栏（服务商、日历提醒、邮件、微信、已完成任务、便利贴、最近会话、音乐 + LRC、专注计时、文件中转站）与带过场动画的面板。详见 [docs/ISLAND.md](docs/ISLAND.md) |
+| 灵动岛 | 可选（`island: true`）：在显示器顶部中央显示圆角胶囊。空闲时可显示最忙服务商，或在“设置 → 位置”中选择最多 6 个服务商和插件图标；悬停或键盘聚焦后平滑变形成两行面板，并展开完整插件栏（服务商、日历提醒、邮件、微信、已完成任务、便利贴、最近会话、音乐 + LRC、专注计时、文件中转站）与带过场动画的面板。详见 [docs/ISLAND.md](docs/ISLAND.md) |
 | 灵动岛插件 | 十个内置面板。日历导入本地 `.ics`（支持简单重复规则）；邮件可读取本地 `.eml`/Maildir 的邮件头，也可选择连接云端账户；微信面板（仅 Windows）通过 UI Automation 只读镜像当前可见的会话列表；音乐播放本地音频并显示 LRC 同步歌词；文件中转站把普通文件复制到本机私密目录。本地邮件和即将开始的日程会在插件栏显示角标。始终不读取正文，也不会上传任何内容。 |
 | 云端邮件（可选） | 在邮件面板的“云端账户”页，可以用 OAuth 连接 Gmail / Outlook，或使用应用专用密码连接任意 IMAP 服务器。只申请只读邮件权限，只列出收件箱未读邮件头。令牌和密码保存在系统钥匙串，不写入设置；移除账户时会一并删除。OAuth 使用你自己的 Google / Microsoft 客户端注册，设置表单内有步骤说明。 |
 | 拖拽移动 | 直接拖动侧栏：松手后吸附到所在显示器最近的一条边缘，并记住沿该边缘的位置 |

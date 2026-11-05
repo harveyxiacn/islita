@@ -241,6 +241,14 @@ export interface WebhookSettings {
   kind: WebhookKind;
 }
 
+/** What the collapsed island shows. Empty providers = busiest summary. */
+export interface IslandIdleSettings {
+  /** quota keys (`claude`, `claude@work`) drawn as rings while idle */
+  providers: string[];
+  /** plugin ids (`calendar`, `mail`) drawn as compact icons while idle */
+  plugins: string[];
+}
+
 export interface Settings {
   version: number;
   language: Language;
@@ -263,6 +271,8 @@ export interface Settings {
   island: boolean;
   /** Gap between the island and the top of the monitor's work area, px. */
   islandMargin: number;
+  /** Providers and plugins shown by the collapsed island. */
+  islandIdle: IslandIdleSettings;
   autoHide: boolean;
   autoHideDelayMs: number;
   /** close the popover after this many seconds without pointer activity; 0 = never */

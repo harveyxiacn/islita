@@ -82,24 +82,39 @@ Apple and makes a confusing search result. "Islita" is a coined diminutive of
 * Dragging: disabled in both the frontend (the capsule has no drag handle) and
   the backend (`drag::drag` returns early), because a drop would fight the
   top-centre watchdog and the drop maths assumes an edge.
-* Motion: a jelly capsule morph on idle↔expanded (overshoot keyframes on
-  `transform`, not a window resize), a staggered spring pop for the tool rail,
-  a panel that arrives with a small squash-and-settle and leaves on a 170 ms
-  exit beat before the island collapses. Hover/press states use spring-like
-  cubic-béziers. The global `prefers-reduced-motion` rule collapses all of it;
-  the close beat is skipped in JS as well, so Escape stays instant.
+* Motion: idle and expanded content are both mounted and measured, and the
+  capsule's **width and height** animate between the two boxes from their
+  shared centre (`width`/`height` + opacity/scale on the layers). The window
+  keeps the larger box for the duration of the collapse (`islandHold`), so the
+  native resize never clips or re-centres the morph halfway through. The tool
+  rail uses a staggered spring pop; a panel arrives with a small
+  squash-and-settle and leaves on a 170 ms exit beat before the island
+  collapses. The global `prefers-reduced-motion` rule collapses all of it; the
+  close beat is skipped in JS as well, so Escape stays instant.
+* Flash-free placements: Windows moves and resizes an overlay in a single
+  `SetWindowPos` (the old move → grow → move sequence repainted the transparent
+  window three times), and `apply_stacking` only re-asserts topmost when the
+  value changes.
 
 ### 2.2 Idle and expanded states
 
-The island renders a **single summary ring** (the busiest provider) plus a
-`+N` badge when idle. Pointer enter or keyboard focus expands it into the full
-provider row and the plugin rail. Leaving schedules a 360 ms collapse, but an
-open plugin panel or keyboard focus keeps it expanded. This is frontend state;
-the Rust hover state machine still owns auto-hide for edge bars.
+By default the island renders a **single summary ring** (the busiest provider)
+plus a `+N` badge when idle. `islandIdle.providers` replaces that summary with
+up to six chosen rings (`claude`, `claude@work`, …); `islandIdle.plugins` adds
+up to six compact, informational plugin icons with their badges. Both lists can
+be set in Settings → Position.
 
-The measured content is reported through the existing `sidebar_relayout`
-protocol, so opening a panel grows the window and re-centres it. No new window
-or resize feedback loop was introduced.
+Pointer enter or keyboard focus morphs it into the **two-row board**: a
+provider row (wrapping when `ringMode` produces many rings) above a 5-column,
+two-row plugin rail. Leaving schedules a 360 ms collapse, but an open plugin
+panel or keyboard focus keeps it expanded. This is frontend state; the Rust
+hover state machine still owns auto-hide for edge bars.
+
+The measured stage is reported through the existing `sidebar_relayout`
+protocol, so opening a panel grows the window and re-centres it. During an
+island morph the stage itself is an explicit size (max of idle/open, panel
+when open) and does not change per animation frame, so there is no resize
+feedback loop.
 
 ### 2.3 Plugin contract
 
@@ -348,10 +363,12 @@ new window, a new process or a new protocol, that is a platform feature first
 
 ## 5. Testing and UX rules for new panels
 
-* Keep the idle island under ~10 rem wide; panels are ≤ 22 rem unless the
-  monitor is narrow.
-* Never animate the window size directly; animate the content and let
-  `observeSize` report. The 50 ms debounce is the resize budget.
+* Keep the default idle island under ~10 rem wide; `islandIdle` may select up
+  to six rings and six icons, so the capsule can be wider — still no more than
+  one row. Panels are ≤ 22 rem unless the monitor is narrow.
+* Never animate the native window size directly. Animate the content inside a
+  stage whose explicit size covers the whole morph, and let `observeSize`
+  report; the 50 ms debounce is the resize budget.
 * Every panel must be usable at `scale` 0.75–1.5 and in light / dark / cyber
   surfaces.
 * Reduced motion, keyboard focus, Escape-to-close and a visible active state

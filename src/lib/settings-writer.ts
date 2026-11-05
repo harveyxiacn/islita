@@ -2,13 +2,14 @@ import type { Settings } from './types';
 
 /** Nested fields are merged by the backend; use the same rule for previews. */
 export type SettingsPatch = Partial<
-  Omit<Settings, 'colors' | 'sizes' | 'thresholds' | 'providers' | 'sidebarItems' | 'subscriptionUsd' | 'webhook'>
+  Omit<Settings, 'colors' | 'sizes' | 'thresholds' | 'providers' | 'sidebarItems' | 'islandIdle' | 'subscriptionUsd' | 'webhook'>
 > & {
   colors?: Partial<Settings['colors']>;
   sizes?: Partial<Settings['sizes']>;
   thresholds?: Partial<Settings['thresholds']>;
   providers?: Record<string, Partial<Settings['providers'][string]>>;
   sidebarItems?: Partial<Settings['sidebarItems']>;
+  islandIdle?: Partial<Settings['islandIdle']>;
   subscriptionUsd?: Record<string, number>;
   webhook?: Partial<Settings['webhook']>;
 };
@@ -24,6 +25,7 @@ export function mergeSettings(base: Settings, patch: SettingsPatch): Settings {
     sizes: { ...base.sizes, ...patch.sizes },
     thresholds: { ...base.thresholds, ...patch.thresholds },
     sidebarItems: { ...base.sidebarItems, ...patch.sidebarItems },
+    islandIdle: { ...base.islandIdle, ...patch.islandIdle },
     subscriptionUsd: { ...base.subscriptionUsd, ...patch.subscriptionUsd },
     webhook: { ...base.webhook, ...patch.webhook },
   };

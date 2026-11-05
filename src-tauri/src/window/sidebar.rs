@@ -35,7 +35,13 @@ pub fn place_sidebar(app: &AppHandle, expanded: bool) -> Option<LogicalRect> {
         log::warn!("sidebar window is gone, cannot place it");
         return None;
     };
-    window::place_overlay(&win, rect, scale);
+    let unchanged = window::snapshot(app).is_some_and(|s| s.last_place == Some((rect, scale)));
+    if unchanged {
+        log::trace!("sidebar already at {rect:?}; skipping redundant placement");
+    } else {
+        window::place_overlay(&win, rect, scale);
+        window::with_state(app, |inner| inner.last_place = Some((rect, scale)));
+    }
     window::apply_stacking(&win, window::settings_of(app).always_on_top);
     log::debug!("sidebar placed at {rect:?} (expanded={expanded})");
     Some(rect)
@@ -141,6 +147,9 @@ pub fn remap(app: &AppHandle) {
             inner.bar_hovered = false;
             inner.popover_hovered = false;
             inner.generation = inner.generation.wrapping_add(1);
+            // A remap may follow a display change; forget the cached box so
+            // the window is genuinely re-placed after hide().
+            inner.last_place = None;
         });
         place(&handle);
         if let Err(e) = win.show() {

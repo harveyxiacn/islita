@@ -38,6 +38,37 @@ export interface SizeReport {
 }
 
 /**
+ * Layout size of an element, reported on resize. Unlike `bind:clientWidth`
+ * the state write happens in the next animation frame: the reported size then
+ * drives a parent's size, and reacting synchronously to the ResizeObserver
+ * would make the observer loop on itself. `clientWidth`/`clientHeight` ignore
+ * the CSS transform used for the island's cross-fade.
+ */
+export const measureSize: Action<HTMLElement, (size: SizeReport) => void> = (node, callback) => {
+  let cb = callback;
+  let frame = 0;
+  const report = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      cb({ width: node.clientWidth, height: node.clientHeight });
+    });
+  };
+  const ro = new ResizeObserver(report);
+  ro.observe(node);
+  report();
+  return {
+    update(next: (size: SizeReport) => void) {
+      cb = next;
+    },
+    destroy() {
+      if (frame) cancelAnimationFrame(frame);
+      ro.disconnect();
+    },
+  };
+};
+
+/**
  * ResizeObserver action. Reports the element's border-box size in CSS px,
  * debounced (default 50 ms) so a burst of layout changes — ring count, scale,
  * font load — collapses into a single sidebar_relayout / popover_relayout call.

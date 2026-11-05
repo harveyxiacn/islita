@@ -75,6 +75,10 @@ pub struct Inner {
     /// The last `popover_show` request, used to re-anchor on relayout.
     pub popover_req: Option<PopoverRequest>,
     pub popover_visible: bool,
+    /// Last rectangle handed to the OS, with the scale it was converted at.
+    /// Re-placing an unchanged transparent overlay still makes Windows
+    /// repaint it, which shows up as a flash while the island morphs.
+    pub last_place: Option<(LogicalRect, f64)>,
     /// The sidebar window is only shown once (first relayout or the fallback).
     pub revealed: bool,
     /// Bumped on every hover event; pending timers with an older generation
@@ -97,6 +101,7 @@ impl Default for Inner {
             popover_content: DEFAULT_POPOVER_SIZE,
             popover_req: None,
             popover_visible: false,
+            last_place: None,
             revealed: false,
             generation: 0,
             last_activity: std::time::Instant::now(),
@@ -110,6 +115,12 @@ pub struct PlatformState {
     pub inner: Mutex<Inner>,
     /// Tray items are updated in place when language or auto-hide changes.
     pub tray_items: Mutex<Option<tray::MenuItems>>,
+    /// Last stacking flags applied per window. Windows honours
+    /// `SetWindowPos(HWND_TOPMOST)` with a full compositor update, so asking
+    /// for the same topmost state on every relayout can flash the transparent
+    /// overlay; only re-assert when the value actually changes.
+    #[cfg(target_os = "windows")]
+    pub stacking: Mutex<std::collections::HashMap<String, bool>>,
 }
 
 /// Read a copy of the platform state, or `None` before `setup` ran.
@@ -139,6 +150,14 @@ pub fn settings_of(app: &AppHandle) -> Settings {
 
 /// `always_on_top` + the flags that X11 window managers like to forget.
 pub fn apply_stacking(win: &WebviewWindow, always_on_top: bool) {
+    #[cfg(target_os = "windows")]
+    if let Some(state) = win.app_handle().try_state::<PlatformState>() {
+        let mut applied = state.stacking.lock();
+        if applied.get(win.label()) == Some(&always_on_top) {
+            return;
+        }
+        applied.insert(win.label().to_string(), always_on_top);
+    }
     if let Err(e) = win.set_always_on_top(always_on_top) {
         log::warn!(
             "set_always_on_top({always_on_top}) on `{}`: {e}",
@@ -223,12 +242,18 @@ pub fn layer_shell_active() -> bool {
 /// pre-resize origin when both happen in one frame; the watchdog catches the
 /// rest). Under Wayland layer-shell the compositor positions the surface from
 /// anchors and margins instead, and `linux::place` takes over completely.
+/// Windows gets one `SetWindowPos` for both axes: each extra call repaints the
+/// transparent overlay and is visible as a flash while the island morphs.
 pub fn place_overlay(win: &WebviewWindow, rect: LogicalRect, scale: f64) {
     #[cfg(target_os = "linux")]
     if linux::place(win, rect) {
         return;
     }
     let (position, size) = rect.to_physical(scale);
+    #[cfg(target_os = "windows")]
+    if place_overlay_windows(win, position, size) {
+        return;
+    }
     if let Err(e) = win.set_position(position) {
         log::warn!("set_position on `{}` failed: {e}", win.label());
     }
@@ -238,6 +263,35 @@ pub fn place_overlay(win: &WebviewWindow, rect: LogicalRect, scale: f64) {
     if let Err(e) = win.set_position(position) {
         log::warn!("set_position on `{}` failed: {e}", win.label());
     }
+}
+
+/// Move and resize in one compositor transaction; `SWP_NOZORDER` keeps the
+/// topmost flag (`apply_stacking`) untouched.
+#[cfg(target_os = "windows")]
+fn place_overlay_windows(
+    win: &WebviewWindow,
+    position: tauri::PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+) -> bool {
+    use ::windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
+    };
+    let Ok(hwnd) = win.hwnd() else {
+        return false;
+    };
+    let flags = SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER;
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            position.x,
+            position.y,
+            size.width as i32,
+            size.height as i32,
+            flags,
+        )
+    }
+    .is_ok()
 }
 
 /// Native translucency for the overlay windows, where the OS provides it.

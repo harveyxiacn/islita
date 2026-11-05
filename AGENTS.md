@@ -173,9 +173,9 @@ ignored until it parses, so write it atomically or in one go.)
 
 The file may be partial: missing keys take their defaults, unknown or invalid
 values are ignored and numbers are clamped. Write only what the user asked for.
-Nested objects (`providers`, `sidebarItems`, `thresholds`, `colors`, `sizes`,
-`webhook`, `subscriptionUsd`) are merged member by member; `accounts` and
-`customPresets` are replaced as a whole.
+Nested objects (`providers`, `sidebarItems`, `islandIdle`, `thresholds`,
+`colors`, `sizes`, `webhook`, `subscriptionUsd`) are merged member by member;
+`accounts` and `customPresets` are replaced as a whole.
 
 Safety net: before each change the previous version is kept in
 `settings.history.json` next to `settings.json` (newest first, 5 versions;
@@ -214,6 +214,7 @@ below list every key exactly once; `pnpm check:agents`
 | `monitor` | `null` = primary, or a monitor name | |
 | `island` | `false`, `true` | float as a rounded capsule at the top centre of the monitor instead of docking flush with `edge`; the island grows downwards for plugin panels and is not draggable |
 | `islandMargin` | `12` (0 – 64) | gap in px between the island and the top of the monitor's work area (also the side gap when it is very wide) |
+| `islandIdle` | `{"providers":[],"plugins":[]}` | what the collapsed island draws: up to 6 quota keys (`claude`, `claude@work`, …) as rings and up to 6 plugin ids (`calendar`, `mail`, …) as icons. Empty `providers` = the busiest provider and a count. Invalid ids are dropped, duplicates removed |
 | `alwaysOnTop` | `true` | keep the bar above other windows |
 | `autoHide` | `false`, `true` | collapse to a thin handle when idle |
 | `autoHideDelayMs` | `800` (0 – 600000) | idle time before the bar collapses |
