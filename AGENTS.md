@@ -215,6 +215,7 @@ below list every key exactly once; `pnpm check:agents`
 | `island` | `false`, `true` | float as a rounded capsule at the top centre of the monitor instead of docking flush with `edge`; the island grows downwards for plugin panels and is not draggable |
 | `islandMargin` | `12` (0 – 64) | gap in px between the island and the top of the monitor's work area (also the side gap when it is very wide) |
 | `islandIdle` | `{"providers":[],"plugins":[]}` | what the collapsed island draws: up to 6 quota keys (`claude`, `claude@work`, …) as rings and up to 6 plugin ids (`calendar`, `mail`, …) as icons. Empty `providers` = the busiest provider and a count. Invalid ids are dropped, duplicates removed |
+| `islandAutoHide` | `false`, `true` | hide the idle island as a thin handle on the top edge; pointing at it reveals the capsule, resting on it for a moment expands the board, and it hides again after `autoHideDelayMs` |
 | `alwaysOnTop` | `true` | keep the bar above other windows |
 | `autoHide` | `false`, `true` | collapse to a thin handle when idle |
 | `autoHideDelayMs` | `800` (0 – 600000) | idle time before the bar collapses |
@@ -235,7 +236,7 @@ below list every key exactly once; `pnpm check:agents`
 | `percentPosition` | `"below"`, `"center"` | show the percentage below each ring, or in its centre in place of the provider logo; used only when `sidebarItems.percentLabel` is on |
 | `labelContent` | `"percent"`, `"reset"`, `"both"` | what the label says: percentage, reset countdown or both |
 | `sidebarAnimations` | `true`, `false` | one-shot pulse when a ring crosses a threshold and a flash on a reset; reduced motion turns them off |
-| `sidebarItems` | `{"fiveHour":true,"weekly":true,"scoped":true,"other":true,"logo":true,"percentLabel":true,"moreButton":true}` | what the bar draws; hidden items are still polled and still shown in the dashboard |
+| `sidebarItems` | `{"fiveHour":true,"weekly":true,"scoped":true,"other":true,"logo":true,"percentLabel":true,"settingsButton":true,"moreButton":true}` | what the bar draws; hidden items are still polled and still shown in the dashboard. `settingsButton` is the “⚙” shortcut to the dashboard's Settings tab |
 | `showScopedRing` | `true` | deprecated alias of `sidebarItems.scoped` |
 | `showPercentLabel` | `true` | deprecated alias of `sidebarItems.percentLabel` |
 | `thresholds` | `{"warn":70,"critical":90}` | ring colour and notifications; each 1 – 100 and `warn` < `critical` |

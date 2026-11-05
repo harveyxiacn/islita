@@ -22,7 +22,9 @@ other Linux distros, Windows. Stack: **Tauri 2 (Rust)** + **SvelteKit / Svelte 5
 
 The opt-in **dynamic island** presentation and its plugin surface are specified
 in **docs/ISLAND.md**. It reuses the same sidebar window, placement maths and
-settings contract; it adds no window label and no network path.
+settings contract. It adds no window label; the bundled panels otherwise stay
+local-first, and the public Claude/OpenAI status-page check is the one new
+network path (`service_status`, only while the Service status panel is open).
 
 ## 2. Providers — verified facts (2026-09)
 
@@ -171,7 +173,9 @@ key is pasted in Settings → Providers and stored in the OS keychain (service
 `io.github.harveyxiacn.islita.opencode`), with `OPENCODE_API_KEY` as a headless
 fallback; it never enters `settings.json`. `GET https://opencode.ai/zen/go/v1/usage`
 maps Go's `rolling` / `weekly` / `monthly` allowances to the 5-hour, Weekly and
-30-day windows. A key without Go falls back to the tightest Zen monthly budget
+30-day windows; the tightest of the three is `isPrimary`, so the percentage
+label follows the allowance closest to its cap. A key without Go falls back to
+the tightest Zen monthly budget
 from `/console/api/policies/current-budgets`, shown as one "Zen budget" window;
 with Go present the budget is only an extra line. `opencodeWorkspaceId` (a
 `wrk_…` id or the Console URL) is optional and sent as the workspace header.
@@ -198,6 +202,9 @@ src/                      SvelteKit frontend                     [FRONTEND]
   lib/api.ts              invoke() wrapper + browser mock         [FRONTEND owns, keep command names]
   lib/i18n/               en.json, zh-CN.json, t()
   lib/components/         Ring.svelte, MiniBar.svelte, Popover.svelte, dashboard/ (tabs, history/, sessions/, settings/ cards), ...
+  lib/plugins/            island plugin contract, registry, storage and built-in panels [FRONTEND]
+  lib/plugins/status.ts   service-status view model (indicator / incident normalisation) [FRONTEND]
+  lib/pet/                desktop-pet simulation, bundled skins, speech, sprite import [FRONTEND]
   lib/builtin-presets.json built-in presets, shared with the tray (Rust include)
   lib/providers.ts        provider-agnostic frontend helpers      [FRONTEND]
 src-tauri/
@@ -219,6 +226,7 @@ src-tauri/
   src/mail.rs             local mail headers: .eml / Maildir scan, no body or network  [BACKEND]
   src/cloud_mail.rs       opt-in Gmail/Outlook OAuth + IMAP app-password accounts; secrets in OS keychain  [BACKEND]
   src/wechat.rs           Windows UI Automation read-only WeChat conversation mirror  [BACKEND]
+  src/status.rs           public Claude / OpenAI Statuspage summaries, `service_status`, 60 s cache [BACKEND]
   src/accounts.rs         extra-account commands (check_account_dir, pick_account_folder)  [BACKEND]
   src/onboarding.rs       get_provider_setup (existence checks only)  [BACKEND]
   src/providers/          claude.rs, codex.rs, copilot.rs, openrouter.rs, opencode.rs, mod.rs (trait, registry, retry, cache) [BACKEND]
@@ -236,7 +244,7 @@ src-tauri/
   src/scheduler.rs        periodic refresh + ingest + maintenance, emits events  [BACKEND]
   src/updater.rs          in-app update check, never auto-installs [PLATFORM]
   tauri.conf.json, capabilities/, icons/                          [PLATFORM]
-docs/                     this file, PLATFORM.md, PROVIDERS.md, SESSIONS.md, STATUSLINE.md, PERFORMANCE.md, reference images
+docs/                     this file, ISLAND.md, PLATFORM.md, PROVIDERS.md, SESSIONS.md, STATUSLINE.md, PERFORMANCE.md, plans/desktop-pet.md, reference images
 scripts/                  check-i18n.mjs, check-agents-settings.mjs, install-linux.sh, smoke-linux.sh
 .github/workflows/        CI builds for linux/macos/windows        [PLATFORM]
 ```
@@ -280,16 +288,21 @@ Key semantics:
   reports the mean absolute error of both variants. The UI only
   marks the ring for `medium`/`high`.
 * `QuotaWindow.isPrimary`: exactly one window per provider is primary (the
-  5‑hour window when the plan has one, else the weekly window).
-  `ringMode = "concentric"` (default): one ring *group* per provider — outer
-  ring = non-scoped weekly window, inner ring = 5-hour window (omitted when the
-  plan has none, e.g. Codex Pro), optional innermost third ring = first scoped
-  window (e.g. Claude "Weekly · Fable") when `sidebarItems.scoped` is on; Codex
-  never gets a third ring (its scoped windows are additional per-feature
-  limits). Rings of one group share the provider hue in decreasing intensity;
-  threshold colours override per ring. The percent label shows the primary
-  window. `ringMode = "primary"`: one plain ring per provider (primary window).
-  `ringMode = "all"`: one ring per non-scoped window.
+  5‑hour window when the plan has one, else the weekly window). OpenCode Go is
+  the exception: `mark_tightest` in `providers/opencode.rs` makes the tightest
+  of its three allowances primary, so the label follows the allowance closest
+  to its cap. `ringMode = "concentric"` (default): one ring *group* per provider —
+  account-wide windows ordered broadest first (weekly outside 5-hour; OpenCode
+  Go's 30-day allowance sits outside both, filling all three arcs), and for a
+  provider with only two account-wide windows an optional innermost third ring
+  = first scoped weekly window (e.g. Claude "Weekly · Fable") when
+  `sidebarItems.scoped` is on; a group never exceeds three arcs. Codex never
+  gets a third ring (its scoped windows are additional per-feature limits).
+  Rings of one group share the provider hue in decreasing intensity; threshold
+  colours override per ring. The percent label shows the primary window.
+  `ringMode = "primary"`: one
+  plain ring per provider (primary window). `ringMode = "all"`: one ring per
+  non-scoped window.
 * `ProviderQuota.status`: `ok | not_logged_in | token_expired | rate_limited |
   error | disabled`. Any status other than `ok` still returns the last known
   windows (from cache or local logs) if available, with `source` telling where
@@ -387,6 +400,7 @@ without a row, or a row without a registration, is a documentation bug).
 | `opencode_clear_key` | – | `()` — removes the app's keychain entry (not `OPENCODE_API_KEY`) |
 | `opencode_key_status` | – | `{ saved: boolean, fromEnv: boolean }` |
 | `get_app_info` | – | `AppInfo` |
+| `service_status` | `force?: boolean` | `StatusReport` — Claude and OpenAI public Statuspage summaries (indicator, description, update time and up to three recent incidents each); the combined report is cached ~60 s, a failed page keeps the other service, and no credential is read |
 
 ### Settings tooling, diagnostics and local file features — `diagnostics.rs`, `dropbox.rs`, `mail.rs`, `cloud_mail.rs`, `wechat.rs`, `settings_io.rs`, `settings_history.rs`
 | command | args | returns |
@@ -538,7 +552,9 @@ relabels the controls ("Horizontal align / offset") on a horizontal edge.
 See `Settings` in `types.ts`. The complete key list with defaults, ranges and meanings is
 the table in **AGENTS.md §5**, which `pnpm check:agents` keeps in step with
 `src/lib/settings-defaults.ts` and `impl Default for Settings` (the authority). Defaults: right edge, vertically centred, always
-shown (`autoHide=false`), `ringMode="concentric"`, every `sidebarItems` member on, `percentMode="used"`, `percentPosition="below"`,
+shown (`autoHide=false`), `island=false`, `islandMargin=12`,
+`islandIdle={providers:[],plugins:[]}`, `islandAutoHide=false`,
+`ringMode="concentric"`, every `sidebarItems` member on, `percentMode="used"`, `percentPosition="below"`,
 `refreshIntervalSec=60`, `adaptiveRefresh=true`, dark theme, `surfaceStyle="glass"` (translucent liquid-glass pill/popover with specular highlight; `solid` = opaque, `cyber` = a neon sci-fi HUD painted by the frontend with no native backdrop), language `auto`, ingestion enabled,
 autostart off, thresholds warn 70 / critical 90, `notifications=false` with
 `forecastNotifications=true` (the predictive warning is on by default but only
@@ -568,17 +584,43 @@ applied through `update_settings`, so every value is validated on use.
 ### Sidebar items (what the bar shows)
 
 `Settings.sidebarItems` (`fiveHour`, `weekly`, `scoped`, `other`, `logo`,
-`percentLabel`, `moreButton`, all default `true`) and
+`percentLabel`, `settingsButton`, `moreButton`, all default `true`) and
 `ProviderSettings.showInSidebar` (default `true`) decide what the **bar**
 draws. They are presentation only: a provider hidden from the bar is still
 polled and still appears in the dashboard, the history and the popover, unlike
 `ProviderSettings.enabled`, which switches the provider off entirely.
+
+`settingsButton` and `moreButton` are the action area at the end of the bar
+(`barActions()` in `src/routes/+page.svelte`): ⚙ calls
+`openDashboard('settings')` and ⋯ calls `openDashboard('overview')`. In the
+forced empty state (no ring would be drawn) the grip is rendered whatever
+`moreButton` says and opens Settings instead, so the window stays hoverable,
+draggable and non-zero. Both buttons are inside the measured content; hiding
+both removes the area without changing any other sizing rule.
 
 `percentPosition="below"` shows the percentage beneath each ring with its own
 line height so it cannot overlap the arcs. `"center"` puts the percentage in
 the centre instead of the provider logo. Both positions follow
 `sidebarItems.percentLabel`; turning it off restores the centre logo when
 `sidebarItems.logo` is enabled. Existing settings default to `"below"`.
+
+### Island (`island`, `islandMargin`, `islandIdle`, `islandAutoHide`)
+
+`island` floats the same sidebar window at the top centre instead of docking to
+`edge`; `islandMargin` is its gap to the monitor's work area (0–64 px), and
+`monitor` still selects the screen. `islandIdle` chooses the collapsed content:
+`providers` (quota keys, `claude@work` included) and `plugins` (registry ids),
+each capped at six by `settings::clamp`, which also trims, de-duplicates and
+drops ids with characters outside `[A-Za-z0-9._@-]`. An empty provider list
+means the busiest provider plus a `+N` count, the original summary.
+`islandAutoHide` (default false) is frontend-only state: after
+`autoHideDelayMs` (minimum 300 ms) with the capsule idle, unoccupied and no
+panel open, the stage shrinks to a 96 × 24 px hit box with a 4 px top-edge
+handle; pointing at the handle reveals the capsule, keyboard focus reveals and
+expands it at once, 280 ms of pointer dwell expands the board, and leaving
+hides it again. It does not use the Rust hover state machine, which still owns
+`autoHide` for edge bars. The island reports its measured size through
+`sidebar_relayout`, like the edge bar.
 
 ### Sidebar visuals (labels, animations, compact mode)
 
@@ -604,7 +646,8 @@ samples + a 60 s cache); each has a `tests/*.unit.ts`.
   painted element (`observeSize` -> `sidebar_relayout`), so no Rust change.
 - Forecast: next to the existing tick a translucent dashed arc runs from the
   current value to the projected one (capped at 100 %). A projection of 100 %
-  adds an hourglass badge and the forecast text joins the group's aria-label.
+  adds an amber hourglass (a forecast warning, not a provider status) and the
+  forecast text joins the group's aria-label.
   Only arcs that already carry a tick (confidence above `low`) get any of it.
 - Collapsed handle: one equal segment per polled provider in that provider's
   severity colour (all windows count, as for `barSeverity`); its title and aria
@@ -630,7 +673,7 @@ Rules, implemented in `src/lib/sidebar-items.ts` and unit-tested in
   can never hide a warning;
 * if the configuration would leave the pill empty, the "⋯" grip is rendered
   anyway (whatever `moreButton` says), so the bar stays hoverable, draggable
-  and never measures zero.
+  and never measures zero. It opens Settings in that state.
 
 `showScopedRing` and `showPercentLabel` are **deprecated** aliases of
 `sidebarItems.scoped` / `sidebarItems.percentLabel`. `settings.rs` migrates an

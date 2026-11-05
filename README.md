@@ -1,9 +1,9 @@
 # Islita
 
 > A plugin-powered island at the top of your screen — **Claude Code** and
-> **OpenAI Codex** quotas, plus mail, calendar, notes, file drop, music and
-> task updates in one fluid capsule. Dock it to any screen edge if you prefer
-> the classic sidebar.
+> **OpenAI Codex** quotas, plus mail, calendar, notes, file drop, music,
+> service status, a desktop pet and task updates in one fluid capsule. Dock it
+> to any screen edge if you prefer the classic sidebar.
 
 *Formerly **AI Usage Sidebar** — the old repository URL redirects here.*
 
@@ -13,9 +13,11 @@
 
 ## Screenshots
 
-Real captures from CachyOS / GNOME (XWayland), dark theme, liquid-glass surface. They
-predate v0.6, so newer elements (reset countdowns, forecast arcs, the History
-sub-views, the Settings cards) are not in them:
+Captures of the current UI in dark theme and the liquid-glass surface. All four
+use the browser preview's sample snapshot (the dashboard header marks it
+*浏览器预览 · 示例数据*); the bar and popover are the real components. The island
+and its plugin panels — music, notes, service status and the desktop pet — are
+not part of these four captures:
 
 <p align="center">
   <img src="docs/screenshots/sidebar.png" alt="Edge sidebar with concentric rings" height="320">
@@ -32,13 +34,19 @@ sub-views, the Settings cards) are not in them:
 **SvelteKit / Svelte 5**. It floats at the top centre of your screen, above
 other windows, and keeps what you check all day within reach without
 interrupting you: *how much of my Claude / Codex quota is left*, and *what else
-needs my attention* — mail, calendar, notes, files, music and finished tasks.
-The island is opt-in; without it the app is the original edge bar.
+needs my attention* — mail, calendar, notes, files, music, service status, a
+desktop pet and finished tasks. The island is opt-in; without it the app is
+the original edge bar.
 
 * An optional **top-centre island** that idles as a customisable capsule (the
   busiest provider by default, or up to six chosen providers and plugin icons),
-  morphs into a two-row board and hosts ten built-in plugin panels.
-* One **progress ring per provider** (or one per window in `ringMode: "all"`).
+  morphs into a five-column board and hosts the built-in plugin panels. With
+  `islandAutoHide` it leaves only a thin top-edge handle and reveals the
+  capsule when you point at it.
+* One **concentric ring group per provider** (at most three arcs) — windows
+  broadest first: weekly outside 5-hour, with Claude's per-model weekly window
+  innermost. OpenCode Go's 30-day allowance sits outside both.
+  `ringMode: "all"` draws one ring per account-wide window.
 * Hovering a ring opens a **popover** with every rate-limit window — 5-hour,
   weekly, per-model — plus its reset time. The popover never steals keyboard focus.
 * A **dashboard** window holds settings and the **token-usage history** parsed from
@@ -56,16 +64,20 @@ The island is opt-in; without it the app is the original edge bar.
 | | |
 |---|---|
 | Edge docking | Any of the four screen edges, positioned along it (start / centre / end) with a pixel offset, on any monitor. Top and bottom turn the bar into a horizontal strip |
-| Dynamic island | Opt-in (`island: true`): a rounded capsule at the top centre of the monitor. It idles with the busiest provider, or with up to six providers and plugin icons chosen in Settings → Position, then morphs into a two-row board with the full plugin rail (providers, calendar reminders, mail, WeChat, completed tasks, sticky note, recent sessions, music + LRC, focus timer, file drop) and animated panels. See [docs/ISLAND.md](docs/ISLAND.md) |
-| Island plugins | Ten built-in panels. Calendar imports a local `.ics` (with simple recurrence expansion); mail reads headers from a local `.eml`/Maildir folder or an opt-in cloud account; the Windows-only WeChat panel mirrors the visible conversation list read-only through UI Automation; music plays local audio with synced LRC lyrics; file drop copies regular files into a private dropbox. Local mail and a soon-starting event show a badge on the rail. Message bodies are never read and nothing is uploaded. |
+| Dynamic island | Opt-in (`island: true`): a rounded capsule at the top centre of the monitor. `islandIdle.providers` / `islandIdle.plugins` choose up to six rings and six plugin icons for the idle capsule (empty = the busiest provider and a count), then it morphs into a five-column board with the full plugin rail (providers, service status, calendar reminders, mail, WeChat, completed tasks, sticky notes, recent sessions, music + LRC, focus timer, desktop pet, file drop) and animated panels. `islandAutoHide` leaves only a thin top-edge handle, reveals the capsule on hover and expands the board after a short dwell. See [docs/ISLAND.md](docs/ISLAND.md) |
+| Island plugins | Built-in panels. Calendar imports a local `.ics` (with simple recurrence expansion); mail reads headers from a local `.eml`/Maildir folder or an opt-in cloud account; the Windows-only WeChat panel mirrors the visible conversation list read-only through UI Automation; **Sticky notes** keeps a board of up to 20 autosaved notes (4,000 characters each); **Music** plays a local playlist with synced LRC lyrics, from picked files or a whole folder, and keeps playing after the panel closes; file drop copies regular files into a private dropbox. Local mail, a soon-starting event and unread pet speech show a badge or dot on the rail. Message bodies are never read and nothing is uploaded. |
+| Service status | Reads the official Claude and OpenAI Statuspage summaries (`status.claude.com`, `status.openai.com`) while the panel is open: indicator, description, last update and up to three recent incidents. The backend caches the combined report for 60 s; the panel refreshes every 5 minutes or on demand. No account or credential is sent; the request only fetches the public summary. |
+| Desktop pet | A local-only companion in the island: three bundled skins — the original **Mochi** mascot, **DeepSeek 大肥鱼** with switchable Q-version (Q版) and transformed (变身) forms, and **Hachiware** — plus needs, XP and levels, four interactions and offline decay capped at 12 h. It comments on your quota in the panel and beside a ring's popover, and its rail icon shows a dot when a threshold is crossed, a window resets, a provider goes down or a CLI turn finishes. A custom portrait or 4:1 four-frame strip (PNG/WebP/GIF, max 2 MB) replaces the bundled art. State stays in this device's plugin storage. |
 | Cloud mail (opt-in) | In the Mail panel's **Accounts** tab, connect Gmail or Outlook with OAuth, or any IMAP host with an app password. Requests read-only mail access and lists unread inbox headers only. Tokens and passwords stay in the OS keychain, never in settings; removing an account deletes them. OAuth uses your own Google/Microsoft client registration, explained in the setup form. |
 | Drag to move | Drag the bar anywhere: it snaps to the nearest screen edge of the monitor you drop it on and remembers its position along that edge |
 | Auto-hide | The bar collapses to a thin handle when you move the pointer away and expands on hover. The collapsed handle is segmented per provider and coloured by severity |
 | Labels | `labelContent`: the percentage, the reset countdown ("1h12") or both under each ring; `percentPosition` puts the percentage below the ring or in its centre instead of the provider logo |
-| Mini-bars | `ringStyle: "bar"` draws each provider as a logo dot plus one slim bar per window instead of rings |
+| Bar items | `sidebarItems` decides what the bar draws: the four window kinds (`fiveHour`, `weekly`, `scoped`, `other`), the provider logo, the percentage label, the ⚙ button and the ⋯ button. Hidden items are still polled and still appear in the dashboard, history and popover |
+| Mini-bars | `ringStyle: "bar"` draws each provider as a logo dot plus one slim bar per ring arc instead of concentric rings |
 | Forecast arc | A dashed arc from the current value to where the projection lands at reset, and an hourglass badge when a window is on pace to run out. From the recorded quota samples, falling back to your token rate when the samples are too few |
 | Animations | One-shot pulse when a ring crosses the warning / critical level, a flash on a reset (`sidebarAnimations`; off under reduced motion) |
 | Popover | Hover a ring for every window with its reset time and a 24 h sparkline. Click a ring to pin it (a pinned popover closes 8 s after the pointer left); click again to close. Any popover closes after `popoverTimeoutSec` (default 10 s) without pointer activity. It never steals keyboard focus |
+| Bar actions | `sidebarItems.settingsButton`: the ⚙ button opens the dashboard's **Settings** tab directly. `sidebarItems.moreButton`: ⋯ opens the dashboard overview (in the empty state it opens Settings). Turn either off in Settings → Sidebar items; the ⋯ grip is still drawn when the bar would otherwise be empty, so it stays hoverable and draggable |
 | Keyboard and screen readers | Focus rings, full ring labels (status, reset time, forecast) and dialog / meter semantics in the popover |
 | Always on top | Re-asserted after every map on X11, visible on all workspaces |
 | Surfaces | `glass` uses a real blurred backdrop where the OS has one (macOS vibrancy, Windows acrylic, KWin on X11); `solid` is opaque; `cyber` is a neon sci-fi HUD (chamfered plate, scanlines, tick-mark rings, segmented bars) repainted by `cyberAccent`: `neon`, `matrix`, `amber`, `ice`, `synthwave` |
@@ -131,8 +143,8 @@ The island is opt-in; without it the app is the original edge bar.
 | GitHub Copilot | **experimental — never tested against a live account** | Free | monthly chat **+** completions counts (there is no premium pool to meter) |
 | GitHub Copilot | **experimental — never tested against a live account** | organisation-managed seat | GitHub reports no per-seat quota; the popover says so instead of showing 0 % |
 | OpenRouter | **experimental — not verified against a live account** | API key from an environment variable | "Credits" window from the key's limit, or the account balance when the key has none; opt-in, off by default |
-| OpenCode Go | **experimental — not verified against a live account** | Go subscription · API key saved in the OS keychain | 5-hour (`rolling`), weekly and 30-day (`monthly`) allowances; opt-in, off by default |
-| OpenCode Zen | **experimental — not verified against a live account** | pay-as-you-go · same key | no Go windows: the tightest monthly Console budget, shown as one "Zen budget" window |
+| OpenCode Go | **experimental — not verified against a live account** | Go subscription · API key saved in the OS keychain | Three concentric rings, outermost first: 30-day (`monthly`), weekly, 5-hour (`rolling`). The tightest window is primary and drives the percentage label; opt-in, off by default |
+| OpenCode Zen | **experimental — not verified against a live account** | pay-as-you-go · same key | no Go windows: the tightest monthly Console budget, shown as one "Zen budget" window. For a Go key the same budget appears as an extra line, not a fourth ring |
 
 Window kinds are **detected from the API**, never assumed: a window is classified
 by its `limit_window_seconds` (≤ 6 h → 5-hour, ~7 d → weekly, anything else →
@@ -160,7 +172,7 @@ with links to the source lines it came from, is in
 and **Cursor** were researched and *not* implemented. Corrections from someone
 with a live Copilot account are very welcome. **OpenRouter** is experimental for the
 same reason (built from its public API reference, no key to test with); it is off
-until you enable it and reads its API key from an environment variable. **OpenCode** is experimental for the same reason: built from OpenCode's own usage code, with no live key to test. Paste a key from opencode.ai/auth in Settings → Providers; it goes to the OS keychain (`OPENCODE_API_KEY` is the headless fallback), so it never enters `settings.json`. Go keys show 5-hour, weekly and 30-day windows; a key without Go shows the tightest Zen monthly budget. A workspace id (`opencodeWorkspaceId`, or the whole Console URL) is optional but may be needed for a key that belongs to a workspace.
+until you enable it and reads its API key from an environment variable. **OpenCode** is experimental for the same reason: built from OpenCode's own usage code, with no live key to test. Paste a key from opencode.ai/auth in Settings → Providers; it goes to the OS keychain (`OPENCODE_API_KEY` is the headless fallback), so it never enters `settings.json`. Go keys show three concentric rings (30-day outermost, then weekly, then 5-hour) with the tightest window driving the label; a key without Go shows the tightest Zen monthly budget as a single "Zen budget" window, and a Go key with a readable workspace budget gets that budget as an extra line. A workspace id (`opencodeWorkspaceId`, or the whole Console URL) is optional but may be needed for a key that belongs to a workspace.
 
 ## How it reads your data
 
@@ -188,6 +200,11 @@ its documented API), and parses the session logs those CLIs leave on disk.
 | OpenRouter | `GET https://openrouter.ai/api/v1/key` (and `/api/v1/credits` for a key without a limit), `Authorization: Bearer …` |
 | OpenCode | `GET https://opencode.ai/zen/go/v1/usage` (5-hour / weekly / 30-day) and, with a workspace id, `GET https://opencode.ai/console/api/policies/current-budgets`; `Authorization: Bearer …`, `x-opencode-org-id` / `x-org-id` |
 
+The island's **Service status** panel additionally fetches the public
+`https://status.claude.com/api/v2/summary.json` and
+`https://status.openai.com/api/v2/summary.json` summaries while it is open;
+those requests carry no credential.
+
 **Local logs (token history, and a fallback when you are offline)**
 
 | Provider | Location |
@@ -204,9 +221,12 @@ Only the primary Claude Code and Codex accounts are ingested; extra accounts are
 > Anthropic's, OpenAI's, GitHub's, OpenRouter's and OpenCode's own endpoints — the
 > same ones `claude`, `codex` and the Copilot editor extensions already talk to,
 > and only for a provider you have switched on. There is no telemetry. The only other outbound
-> requests are the daily GitHub release check, the price-table check, a webhook you
-> configure yourself and an AI evaluation you send; Settings → Privacy & network
-> lists them all, and a settings switch turns off each automatic one. Session JSONL records are
+> requests are the daily GitHub release check, the price-table check, the two public
+> Claude/OpenAI status pages while the Service status panel is open, a webhook you
+> configure yourself and an AI evaluation you send. Settings → Privacy & network
+> lists the provider, update and pricing requests, with a switch for each automatic
+> one; the status check has no switch because it only runs while that panel is open,
+> and it carries no credential and no account data. Session JSONL records are
 > parsed locally to index usage, titles, turns, tool counters and message locations;
 > the index does not copy conversation bodies. **Sessions → Local content** is off
 > by default and must be enabled to display prompts or derive title excerpts.
@@ -468,15 +488,16 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 # Islita（灵动岛）
 
 > 一个置顶在屏幕顶部中央的插件灵动岛：一眼看清 **Claude Code** 与 **OpenAI Codex**
->（以及实验性的 GitHub Copilot 与 OpenRouter）的额度，也顺手处理邮件、日程、便利贴、
-> 文件中转、音乐和任务提醒；想贴边用时仍可切回经典侧边栏。
+>（以及实验性的 GitHub Copilot、OpenRouter 与 OpenCode）的额度，也顺手处理邮件、日程、便利贴、
+> 文件中转、音乐、服务状态、桌面宠物和任务提醒；想贴边用时仍可切回经典侧边栏。
 
 *原名 **AI Usage Sidebar**，旧仓库地址会自动跳转到这里。*
 
 ## 截图
 
-在 CachyOS / GNOME（XWayland）上的真实截图，深色主题、液态玻璃表面。截图早于 v0.6，
-因此不含较新的元素（重置倒计时、预测弧、历史子页、设置卡片）：
+当前界面的截图，深色主题、液态玻璃表面。四张图都使用浏览器预览的示例快照
+（仪表盘页头标注 *浏览器预览 · 示例数据*），栏与弹层为真实组件；灵动岛及其插件面板
+（音乐、便利贴、服务状态、桌面宠物）不在本次四张截图中：
 
 <p align="center">
   <img src="docs/screenshots/sidebar.png" alt="贴边侧栏与同心环" height="320">
@@ -492,10 +513,12 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 `Islita` 用 **Tauri 2（Rust）** + **SvelteKit / Svelte 5** 编写，
 常驻屏幕顶部中央（也可贴靠任意边缘）、置顶于其他窗口之上，让你不被打断地看到两类信息：
 *我的 Claude / Codex 额度还剩多少、什么时候重置*，以及*还有什么需要我处理*——
-邮件、日程、便利贴、文件中转、音乐和已完成任务。灵动岛默认关闭，关闭时就是原来的贴边侧栏。
+邮件、日程、便利贴、文件中转、音乐、服务状态、桌面宠物和已完成任务。灵动岛默认关闭，关闭时就是原来的贴边侧栏。
 
-* 可选的**顶部中央灵动岛**：空闲时是一个胶囊，展开后显示服务商圆环和插件栏，内置十个插件面板。
-* 每个服务一个**进度环**（`ringMode: "all"` 时每个限额窗口一个环）。
+* 可选的**顶部中央灵动岛**：空闲时是一个可自定义的胶囊（默认显示最忙服务商，或最多 6 个指定服务商与插件图标），
+  展开后显示两行面板，并内置各插件面板。开启 `islandAutoHide` 后只在屏幕顶部留一条细把手，鼠标移过去才显示胶囊。
+* 每个服务一个**同心圆环组**（最多三层弧）——窗口由宽到窄：每周在外、5 小时在内，Claude 的按模型每周窗口在最内层；
+  OpenCode Go 的 30 天额度又在两者之外。`ringMode: "all"` 时每个账户级窗口一个环。
 * 悬停某个环会弹出**详情层**，列出全部限额窗口——5 小时、每周、按模型——以及各自的重置时间。弹层**不会抢走键盘焦点**。
 * **仪表盘**窗口提供设置，以及从各 CLI 本地会话日志解析出来的 **token 使用历史**，方便横向比较不同套餐与服务（并给出仅供参考的 API 等价费用估算）。
 * **托盘图标**：带实时用量行，可显示/隐藏侧边栏、立即刷新、暂停轮询、开启专注模式、打开仪表盘、退出。
@@ -508,16 +531,20 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 | | |
 |---|---|
 | 边缘吸附 | 四条屏幕边缘任选，沿边缘对齐（起始/居中/末端）并可设像素偏移，可指定显示器；贴靠顶部或底部时侧栏会变成横条 |
-| 灵动岛 | 可选（`island: true`）：在显示器顶部中央显示圆角胶囊。空闲时可显示最忙服务商，或在“设置 → 位置”中选择最多 6 个服务商和插件图标；悬停或键盘聚焦后平滑变形成两行面板，并展开完整插件栏（服务商、日历提醒、邮件、微信、已完成任务、便利贴、最近会话、音乐 + LRC、专注计时、文件中转站）与带过场动画的面板。详见 [docs/ISLAND.md](docs/ISLAND.md) |
-| 灵动岛插件 | 十个内置面板。日历导入本地 `.ics`（支持简单重复规则）；邮件可读取本地 `.eml`/Maildir 的邮件头，也可选择连接云端账户；微信面板（仅 Windows）通过 UI Automation 只读镜像当前可见的会话列表；音乐播放本地音频并显示 LRC 同步歌词；文件中转站把普通文件复制到本机私密目录。本地邮件和即将开始的日程会在插件栏显示角标。始终不读取正文，也不会上传任何内容。 |
+| 灵动岛 | 可选（`island: true`）：在显示器顶部中央显示圆角胶囊。`islandIdle.providers` / `islandIdle.plugins` 选择空闲时最多 6 个圆环和 6 个插件图标（留空则显示最忙服务商与数量）；悬停或键盘聚焦后平滑变形成两行面板，并展开完整插件栏（服务商、服务状态、日历提醒、邮件、微信、已完成任务、便利贴、最近会话、音乐 + LRC、专注计时、桌面宠物、文件中转站）与带过场动画的面板。开启 `islandAutoHide` 后空闲时只留顶边细把手，悬停显示胶囊，停留片刻再展开面板。详见 [docs/ISLAND.md](docs/ISLAND.md) |
+| 灵动岛插件 | 内置面板。日历导入本地 `.ics`（支持简单重复规则）；邮件可读取本地 `.eml`/Maildir 的邮件头，也可选择连接云端账户；微信面板（仅 Windows）通过 UI Automation 只读镜像当前可见的会话列表；**便利贴**提供最多 20 张自动保存的便签（每张 4000 字）；**音乐**播放本地播放列表并显示 LRC 同步歌词，可从文件或整个文件夹添加，关闭面板后继续播放；文件中转站把普通文件复制到本机私密目录。本地邮件、即将开始的日程和宠物未读发言会在插件栏显示角标或圆点。始终不读取正文，也不会上传任何内容。 |
+| 服务状态 | 面板打开时读取 Claude 与 OpenAI 官方状态页（`status.claude.com`、`status.openai.com`）：总体状态、说明、更新时间与最近最多 3 条事件。后端缓存合并结果 60 秒，面板每 5 分钟或手动刷新。不需要账号或凭据，只读取公开摘要。 |
+| 桌面宠物 | 仅在本机运行的灵动岛伙伴：三套内置形象——原创**麻薯**、**DeepSeek 大肥鱼**（可切换 **Q版** 与 **变身** 两种形态）与**小八**；带饱腹/心情/精力、经验与等级、四种互动，离线衰减最多计 12 小时。它会在面板和圆环弹层里点评额度，插件栏图标在越过阈值、窗口重置、服务商掉线或 CLI 一轮任务完成时显示未读圆点。可导入一张竖版图片或 4:1 四帧条（PNG/WebP/GIF，最大 2 MB）替换内置形象。状态只保存在本机插件存储中。 |
 | 云端邮件（可选） | 在邮件面板的“云端账户”页，可以用 OAuth 连接 Gmail / Outlook，或使用应用专用密码连接任意 IMAP 服务器。只申请只读邮件权限，只列出收件箱未读邮件头。令牌和密码保存在系统钥匙串，不写入设置；移除账户时会一并删除。OAuth 使用你自己的 Google / Microsoft 客户端注册，设置表单内有步骤说明。 |
 | 拖拽移动 | 直接拖动侧栏：松手后吸附到所在显示器最近的一条边缘，并记住沿该边缘的位置 |
 | 自动隐藏 | 鼠标离开后收起为细条，悬停时自动展开；收起的把手按服务商分段，并按严重程度着色 |
 | 标签 | `labelContent`：圆环下显示百分比、重置倒计时（如“1h12”）或两者；`percentPosition` 可将百分比放在圆环下方，或放进圆心以替代服务商图标 |
-| 迷你条 | `ringStyle: "bar"`：每个服务商显示为一个图标点加每个窗口一条细进度条，而不是圆环 |
+| 栏内元素 | `sidebarItems` 决定侧栏画什么：四种窗口类型（`fiveHour`、`weekly`、`scoped`、`other`）、服务商图标、百分比标签、⚙ 按钮与 ⋯ 按钮。隐藏的元素仍会被轮询，也仍会出现在仪表盘、历史与弹层中 |
+| 迷你条 | `ringStyle: "bar"`：每个服务商显示为一个图标点加每个圆环弧一条细进度条，而不是同心圆环 |
 | 预测弧 | 一条虚线弧从当前值延伸到重置时预计落点，预计提前用尽时显示沙漏徽标。依据已记录的额度样本；样本过少时回退为按 token 速率估算 |
 | 动画 | 越过警告/严重阈值时圆环脉冲一次，重置时闪光一次（`sidebarAnimations`；系统开启“减少动态效果”时关闭） |
 | 弹层 | 悬停圆环查看各窗口、重置时间与 24 小时 sparkline。点击圆环可固定弹层（固定后鼠标离开 8 秒自动关闭），再次点击立即关闭；任何弹层在 `popoverTimeoutSec`（默认 10 秒）内无鼠标活动也会关闭。弹层不会抢走键盘焦点 |
+| 栏位按钮 | `sidebarItems.settingsButton`：⚙ 按钮直接打开仪表盘的**设置**页。`sidebarItems.moreButton`：⋯ 打开仪表盘概览（空状态下则打开设置）。可在“设置 → 侧栏显示内容”中分别关闭；即使侧栏本会为空，⋯ 把手仍会画出，以保证可悬停、可拖拽 |
 | 键盘与读屏 | 焦点环、完整的圆环标签（状态、重置时间、预测），弹层具备 dialog / meter 语义 |
 | 始终置顶 | X11 下每次映射后重新置顶，并在所有工作区可见 |
 | 表面风格 | `glass` 在系统支持时使用原生毛玻璃（macOS vibrancy、Windows acrylic、X11 下的 KWin 模糊）；`solid` 不透明；`cyber` 是霓虹科幻 HUD（切角面板、扫描线、刻度式圆环、分段进度条），由 `cyberAccent` 换色：`neon`、`matrix`、`amber`、`ice`、`synthwave` |
@@ -583,8 +610,8 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 | GitHub Copilot | **实验性 —— 从未在真实账号上验证** | Free | 每月 chat **+** 代码补全次数（免费套餐没有 premium 额度池） |
 | GitHub Copilot | **实验性 —— 从未在真实账号上验证** | 组织分配的席位 | GitHub 不返回该席位的个人额度，弹窗会如实说明，而不是显示 0% |
 | OpenRouter | **实验性 —— 未在真实账号上验证** | 环境变量中的 API Key | 按密钥额度上限显示“Credits”窗口；无上限时显示账户余额；需手动开启，默认关闭 |
-| OpenCode Go | **实验性 —— 未在真实账号上验证** | Go 订阅 · API 密钥保存在系统钥匙串 | 5 小时（`rolling`）、每周与 30 天（`monthly`）额度；需手动开启，默认关闭 |
-| OpenCode Zen | **实验性 —— 未在真实账号上验证** | 按量付费 · 同一密钥 | 没有 Go 窗口时，显示 Console 中额度最紧的月度预算（“Zen budget”窗口） |
+| OpenCode Go | **实验性 —— 未在真实账号上验证** | Go 订阅 · API 密钥保存在系统钥匙串 | 三个同心圆环，由外到内：30 天（`monthly`）、每周、5 小时（`rolling`）。最紧的窗口为主窗口并决定百分比标签；需手动开启，默认关闭 |
+| OpenCode Zen | **实验性 —— 未在真实账号上验证** | 按量付费 · 同一密钥 | 没有 Go 窗口时，显示 Console 中额度最紧的月度预算（“Zen budget”窗口）；Go 密钥的同一预算只作为附加行显示，不增加第四个圆环 |
 
 窗口类型一律**由 API 返回值判断**，不做假设：按 `limit_window_seconds` 归类
 （≤ 6 小时 → 5 小时窗口，约 7 天 → 每周窗口，其余 → 其他）。每周窗口也可能是
@@ -602,7 +629,7 @@ GitHub Copilot 则只依据其他开源项目公开的源码，以及 GitHub 自
 *实验性*，其数值可能有误，也可能随时失效。所有结论及其源码出处链接都记录在
 [docs/PROVIDERS.md](docs/PROVIDERS.md)，其中也说明了 **Gemini CLI** 与
 **Cursor** 为什么调研后*没有*实现。欢迎有 Copilot 账号的朋友帮忙纠正。**OpenRouter** 同样是实验性的（依据其公开 API 文档实现，作者没有可测试的密钥），
-需手动开启，API 密钥从环境变量读取。**OpenCode** 同样标记为实验性：依据 OpenCode 自身的用量代码实现，作者没有可测试的密钥。在「设置 → 服务商」粘贴 opencode.ai/auth 的密钥即可，密钥保存在系统钥匙串（无界面环境回退到 `OPENCODE_API_KEY`），不会进入 `settings.json`。Go 密钥显示 5 小时、每周与 30 天窗口；没有 Go 时显示最紧的 Zen 月度预算。可选填工作区 ID（`opencodeWorkspaceId`，或整条 Console 地址），属于工作区的密钥可能需要它。
+需手动开启，API 密钥从环境变量读取。**OpenCode** 同样标记为实验性：依据 OpenCode 自身的用量代码实现，作者没有可测试的密钥。在「设置 → 服务商」粘贴 opencode.ai/auth 的密钥即可，密钥保存在系统钥匙串（无界面环境回退到 `OPENCODE_API_KEY`），不会进入 `settings.json`。Go 密钥显示三个同心圆环（30 天最外、然后每周、5 小时最内），最紧的窗口决定标签；没有 Go 时显示最紧的 Zen 月度预算（单个“Zen budget”窗口），可读取工作区预算的 Go 密钥则把该预算作为附加行显示。可选填工作区 ID（`opencodeWorkspaceId`，或整条 Console 地址），属于工作区的密钥可能需要它。
 
 ## 数据从哪里来
 
@@ -629,6 +656,10 @@ GitHub Copilot 则只依据其他开源项目公开的源码，以及 GitHub 自
 | OpenRouter | `GET https://openrouter.ai/api/v1/key`（无额度上限的密钥还会请求 `/api/v1/credits`），`Authorization: Bearer …` |
 | OpenCode | `GET https://opencode.ai/zen/go/v1/usage`（5 小时 / 每周 / 30 天）；填写工作区 ID 时还会请求 `GET https://opencode.ai/console/api/policies/current-budgets`；`Authorization: Bearer …`、`x-opencode-org-id` / `x-org-id` |
 
+灵动岛中的**服务状态**面板打开时，还会读取公开的
+`https://status.claude.com/api/v2/summary.json` 与
+`https://status.openai.com/api/v2/summary.json` 摘要；这些请求不携带凭据。
+
 **本地日志（token 历史；离线时也作为额度兜底）**
 
 | 服务 | 位置 |
@@ -644,7 +675,9 @@ GitHub Copilot 则只依据其他开源项目公开的源码，以及 GitHub 自
 > **隐私说明**：除了发往 Anthropic、OpenAI、GitHub、OpenRouter 与 OpenCode 自家接口（也就是 `claude`、
 > `codex` 和 Copilot 编辑器插件本来就会访问的那几个，且仅限你已启用的服务商）之外，
 > 登录凭据不会离开本机。没有遥测或统计上报。其余外发请求只有：每日一次的 GitHub 新版本检查、价格表检查、
-> 你自己配置的 Webhook，以及你主动发送的 AI 评测；“设置 → 隐私与网络”会全部列出，自动发生的几项都有开关可关。会话 JSONL 在本机解析，索引保留用量、标题、轮次、
+> 服务状态面板打开时对 Claude / OpenAI 两个公开状态页的检查、你自己配置的 Webhook，以及你主动发送的 AI 评测。
+> “设置 → 隐私与网络”会列出服务商、更新与价格检查及其自动开关；状态页检查只在该面板打开时发生，
+> 没有独立开关，也不携带任何凭据或账号信息。会话 JSONL 在本机解析，索引保留用量、标题、轮次、
 > 工具计数和消息位置，不复制对话正文。**会话 → 本地内容**默认关闭，开启后才显示提示词或生成标题摘录。
 > **AI 评测可选**：仅点击发送时，将你检查过的预览发送到配置的接口。评测报告与预览缓存键在本机保留
 > （最多 100 份）；关闭本地内容会清除它们。API Key 仅从指定环境变量读取，不写入应用设置。

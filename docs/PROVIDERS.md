@@ -545,6 +545,15 @@ A workspace without the member's Go subscription is refused with `403`; that is
 not an invalid key, so the provider falls back to Zen (below) before showing an
 error.
 
+On the bar the three account-wide windows form one concentric group, broadest
+first: 30-day (`monthly`) outermost, weekly (`weekly`) in the middle, 5-hour
+(`rolling`) innermost. The frontend's `concentricArcs`
+(`src/lib/sidebar-items.ts`, feeding `buildRingItems` in
+`src/lib/stores/rings.svelte.ts`) caps a group at three arcs, so no fourth ring
+is drawn. `mark_tightest` makes the allowance closest to its cap `isPrimary`,
+so the group's percentage label follows that window rather than always the
+5-hour one.
+
 ### 6.2 Zen: monthly budgets
 
 Zen has dollar budgets rather than time windows

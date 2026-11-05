@@ -2,8 +2,8 @@
 
 Status: **implemented foundation** (2026-11). This document records the
 architecture decision, the plugin contract, the shipped built-in plugins
-(including opt-in cloud mail and the Windows WeChat mirror) and the remaining
-product decisions.
+(including opt-in cloud mail, the Windows WeChat mirror, service status and the
+desktop pet) and the remaining product decisions.
 
 ## 1. Decision: extend this repository, do not start a second product
 
@@ -102,13 +102,28 @@ By default the island renders a **single summary ring** (the busiest provider)
 plus a `+N` badge when idle. `islandIdle.providers` replaces that summary with
 up to six chosen rings (`claude`, `claude@work`, …); `islandIdle.plugins` adds
 up to six compact, informational plugin icons with their badges. Both lists can
-be set in Settings → Position.
+be set in Settings → Position. The backend trims the ids, drops duplicates and
+invalid entries and caps each list at six; the shell ignores ids it does not
+know. Idle plugin icons are not buttons — the pointer enters the stage and
+expands the island before a click could land — but their mail, calendar and pet
+badges are still drawn. The expanded rail uses the same registry and order.
 
-Pointer enter or keyboard focus morphs it into the **two-row board**: a
-provider row (wrapping when `ringMode` produces many rings) above a 5-column,
-two-row plugin rail. Leaving schedules a 360 ms collapse, but an open plugin
+Pointer enter or keyboard focus morphs it into the **expanded board**: a
+provider row (wrapping when `ringMode` produces many rings) above a 5-column
+plugin rail (three rows with the twelve built-in plugins; more wrap). Leaving
+schedules a 360 ms collapse, but an open plugin
 panel or keyboard focus keeps it expanded. This is frontend state; the Rust
 hover state machine still owns auto-hide for edge bars.
+
+`islandAutoHide` adds a second, island-only idle state. When the capsule is
+idle, unoccupied and no panel is open, it collapses after `autoHideDelayMs`
+(minimum 300 ms) into a 96 × 24 px hit box with a 4 px handle on the top edge.
+Pointing at the handle reveals the capsule; keyboard focus reveals it and
+expands the board at once (Enter/Space does the same on the hidden handle).
+Resting the pointer on the revealed capsule for 280 ms expands the board.
+Leaving hides it again after the same delay, and hiding closes a pinned
+popover. Auto-hide never applies to the edge bar, whose collapse is still
+owned by `hover.rs`.
 
 The measured stage is reported through the existing `sidebar_relayout`
 protocol, so opening a panel grows the window and re-centres it. During an
@@ -121,45 +136,81 @@ feedback loop.
 `src/lib/plugins/types.ts`:
 
 ```ts
+interface PluginContext {
+  close: () => void;          // the shell closes the panel; a panel may call it too
+}
+
 interface IslandPlugin {
-  id: string;                 // storage namespace + stable key
-  label: string;              // i18n key
-  hint?: string;              // i18n key
-  icon: string;               // 24×24 SVG path, stroke style
-  order: number;              // rail order
-  component: Component;       // panel body
+  id: string;                 // stable key + localStorage namespace
+  label: string;              // i18n key (rail tooltip / accessible name)
+  hint?: string;              // optional i18n key
+  icon: string;               // 24×24 SVG path, fill="none", stroke="currentColor"
+  order: number;              // lower numbers sit first
+  component: Component;       // panel body, receives { close }
 }
 ```
 
 A panel is an ordinary Svelte component. It receives `close()` but may ignore
 it. Registration is one entry in `src/lib/plugins/registry.ts`; the shell reads
-that list and nothing else. Plugin state is stored with
-`src/lib/plugins/storage.ts` (`localStorage`, namespaced, every access
-guarded), so a storage failure never takes down the island.
+`ISLAND_PLUGINS` (that list sorted by `order`) and nothing else. The rail and
+the idle `islandIdle.plugins` icons both come from this registry. A panel owns
+its state through `src/lib/plugins/storage.ts` (`localStorage`, namespaced,
+every access guarded, so a storage failure never takes down the island) and
+talks to the backend only through explicit commands in `src/lib/api.ts`; it
+never reads credentials or moves a window itself.
 
 Built-in panels shipped with this foundation:
 
 | Plugin | What it does | Data boundary |
 |---|---|---|
 | `providers` | Track / bar switches per provider, live percentage, link to Settings | existing `settings` store + backend commands |
+| `status` | Claude and OpenAI service status from the official Statuspage summaries: indicator, description, last update and up to three recent incidents; refreshes every 5 minutes while open, with an explicit retry | new `service_status` command: both pages fetched concurrently, combined report cached 60 s, per-service errors; no account or credential |
 | `calendar` | Import a local `.ics`, show the next five events and a 15-minute "starts soon" state; expands simple RRULEs (DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT, UNTIL, BYDAY + EXDATE) | local file picker + `localStorage`; no account, token or network |
 | `mail` | Unread count and newest subjects/senders from a local `.eml` folder or Maildir, **or** an opt-in cloud account (Gmail / Outlook OAuth, or any IMAP host with an app password) | local folder: native picker + `scan_mail_folder`, headers only, no account or network. Cloud: `mail_cloud_*`, read-only inbox headers, tokens/passwords in the OS keychain and metadata only in `cloud-accounts.json`. Polled only while the panel is open |
 | `wechat` | Latest message per visible WeChat conversation (Windows only), with the client's own time labels | UI Automation of `mmui::ChatSessionCell`; read-only mirror, no chat database, keystrokes, network or sending |
 | `tasks` | Finished Claude Code / Codex turns, newest first; updates live from `task-completed` | new `list_task_completions` command; provider, project and local title only |
-| `notes` | Sticky note with autosave, clear, character count | local device only, never uploaded |
+| `notes` | A board of up to 20 sticky notes: pick one from the list, edit, add, delete; autosaves 250 ms after typing, 4,000 characters per note | local device only, never uploaded |
 | `sessions` | Latest Claude Code / Codex sessions: title, age, tokens, warm indicator | existing `list_sessions` command; no prompt or response text |
-| `music` | Local audio playlist, play/pause/seek/volume and synced LRC lyrics; playback survives closing the panel | File API + object URL; files never reach the backend |
+| `music` | Local audio playlist, play/pause/seek/volume and synced LRC lyrics from picked files or a whole folder; playback survives closing the panel | picked files: File API + object URL. Folder: `scan_music_folder` lists tracks and lets the webview stream them through the asset protocol, scoped to that folder; audio bytes never reach the backend |
 | `timer` | 25/5 focus timer, deadline survives restart | local device only, no notification permission |
+| `pet` | Local-only companion with three bundled skins — original Mochi, DeepSeek 大肥鱼 (switchable Q版/变身 forms) and Hachiware — needs, XP, levels, four interactions, and an optional custom portrait or 4:1 four-frame strip | plugin `localStorage` only; imported images stay on the device; no network, audio or account |
 | `drop` | Native drop target + file picker; copies regular files into a private dropbox, lists recent ones, opens the folder | `save_dropped_files` / `pick_dropped_files` / `list_dropped_files`; 20 files, 512 MiB each, no execution |
 
 The plugin rail is only rendered in island mode. Edge-bar users keep Settings
-→ Providers and the new tray submenu. The rail itself carries two attention
-badges (`attention.svelte.ts`): the mail icon shows the local folder's unread
-count and the calendar icon shows a dot when an imported event starts within
-15 minutes. Both read the same namespaced localStorage keys as the panels and
-refresh once a minute, plus immediately when a panel writes its state. Cloud
-accounts are intentionally not polled in the background, so they do not add a
-rail badge yet; their unread count appears when the Mail panel is open.
+→ Providers and the new tray submenu. The rail itself carries three attention
+badges: the mail icon shows the local folder's unread count and the calendar
+icon shows a dot when an imported event starts within 15 minutes (both from
+`attention.svelte.ts`); the pet icon shows a dot while `petSpeech.unread` is
+set (see below). The first two read the same namespaced localStorage keys as
+the panels and refresh once a minute, plus immediately when a panel writes its
+state. Cloud accounts are intentionally not polled in the background, so they
+do not add a rail badge yet; their unread count appears when the Mail panel is
+open.
+
+Two panels have data boundaries worth naming. `status` calls the backend
+`service_status` command only while its panel is mounted: both official
+Statuspage summaries are fetched concurrently, the combined report is cached
+for 60 seconds, and one page failing leaves the other service visible. It sends
+no credential or account data. `pet` is entirely local: its state lives in
+the plugin's namespaced localStorage entry, and an imported sprite is stored
+there as a data URL (PNG/WebP/GIF, at most 2 MiB; one portrait or a 4:1
+four-frame strip). Neither panel reads a credential, and only `status` talks to
+the network, through that command.
+
+The pet has three bundled skins: the original inline-SVG **Mochi** mascot,
+**DeepSeek 大肥鱼** with switchable Q-version (Q版) and transformed (变身) forms,
+and **Hachiware**. Needs decay with elapsed time (offline decay is capped at
+12 hours), and feed / play / rest / pat grant XP and levels.
+`src/lib/pet/speech.ts` maps the snapshot, settings and the pet's needs to one
+situation — polling paused, a critical or warning window, a provider that went
+down, a forecast, or hungry / tired / bored / happy / ok — and then to an i18n
+line per voice; the same table has a `taskDone` line used by the finished-turn
+event. The pet panel shows the newest island event or the current situation
+line; a ring's quota popover shows the same voice with an avatar and one line
+about that provider. `src/lib/pet/speech.svelte.ts` keeps the latest
+island-wide event and its unread flag: a threshold crossing or reset, a
+provider that stops being reachable, and a completed CLI turn set the rail
+dot, and opening the pet panel clears it.
 
 ### 2.4 Provider selection
 
@@ -185,8 +236,11 @@ These are not optional, and a plugin that cannot meet them does not ship:
 * **No credential reads in a panel.** A panel talks to a named backend
   command; only the provider layer may read credential files, and it never
   returns their contents.
-* **No silent network access.** A plugin that polls a service must have an
-  explicit settings switch, show its account/endpoint, and respect focus mode.
+* **No silent network access.** A plugin that polls a user's service must have
+  an explicit settings switch, show its account/endpoint, and respect focus
+  mode. The account-free public status pages are the narrow exception: they are
+  read only while the Status panel is open, through a cached backend command,
+  and never receive a credential or account data.
 * **No unbounded storage.** Plugin state stays small and local; anything
   durable and queryable belongs in SQLite behind a command.
 * **No focus stealing.** Panels live in the sidebar window, which never takes
@@ -196,8 +250,9 @@ These are not optional, and a plugin that cannot meet them does not ship:
   and keep tokens/passwords in the OS keychain, never in `settings.json` or
   plugin localStorage. The OAuth scopes are read-only (`gmail.readonly`,
   `Mail.Read`); IMAP fetches only `RFC822.HEADER`. The local folder reader,
-  calendar and the other file-based plugins never contact a network. A mail
-  account is added only by an explicit user action.
+  calendar, notes, pet and the other file-based plugins never contact a
+  network; the status panel only reads the two public status pages through
+  `service_status`. A mail account is added only by an explicit user action.
 * **Accessibility stays read-only.** The WeChat panel may read accessible names
   from the visible conversation list, but must never invoke an accessible
   action, click, type, scroll or change WeChat's window.
@@ -255,17 +310,26 @@ Local-first: the File API opens audio and `.lrc` files, `<audio>` plays an
 object URL, and `lrc.ts` parses timestamps, metadata and `offset`. The active
 line follows `timeupdate`; clicking a line seeks. The audio element lives in
 `player.svelte.ts`, outside the panel component, so collapsing the island or
-switching plugins does not stop playback. The playlist is session-only because
-object URLs do not survive a restart; the panel says so instead of pretending
-otherwise. No asset protocol, file-system scope, streaming service, DRM or
-media-key capture was added.
+switching plugins does not stop playback.
+
+A whole folder can be added too (native folder picker → `scan_music_folder`).
+The backend walks it recursively (12 levels), lists the known audio extensions
+and pairs a sibling `.lrc` by stem, decoding UTF-8 or GB18030. The folder is
+added to the asset-protocol scope at scan time, so the webview streams the
+files with byte ranges and nothing is copied or sent to the backend; revoking
+the scope is a restart. The chosen folder path is kept in `localStorage` and
+re-scanned on the next open; the playlist itself is session-only. No streaming
+service, DRM or media-key capture is involved.
 
 ### 4.4 Sticky notes (done) and richer notes
 
-The shipped panel is intentionally one scratchpad. Next steps: multiple notes,
-markdown preview, pin/unpin, export to `.md`, and per-provider/project notes.
-SQLite-backed if notes must sync with the dashboard; localStorage if they stay
-a quick scratchpad.
+The panel is a small board: up to 20 notes are listed above the editor, each
+card shows the first two lines, and New/Clear/delete act on the board. Notes
+are stored as `{ version: 2, notes, activeId }` under the `notes` plugin key;
+the 0.7 single-note shape is migrated on read. Storage is local (localStorage),
+empty notes are not persisted, and nothing is uploaded. Next steps: markdown
+preview, pin/unpin, export to `.md`, and per-provider/project notes.
+SQLite-backed if notes must sync with the dashboard.
 
 ### 4.5 E-mail and calendar
 
@@ -366,6 +430,14 @@ new window, a new process or a new protocol, that is a platform feature first
 * Keep the default idle island under ~10 rem wide; `islandIdle` may select up
   to six rings and six icons, so the capsule can be wider — still no more than
   one row. Panels are ≤ 22 rem unless the monitor is narrow.
+* The shell owns placement, sizing and focus. A panel receives `close` and may
+  call it; Escape is handled by the shell. A panel never resizes or moves the
+  window itself.
+* A panel must be usable while the snapshot is `null`, the backend is
+  unreachable or `localStorage` throws; a failed poll shows a message, not a
+  blank panel. A panel that polls a service does so only while it is open, or
+  behind an explicit settings switch, and states the account/endpoint it uses
+  (§3).
 * Never animate the native window size directly. Animate the content inside a
   stage whose explicit size covers the whole morph, and let `observeSize`
   report; the 50 ms debounce is the resize budget.
@@ -373,12 +445,12 @@ new window, a new process or a new protocol, that is a platform feature first
   surfaces.
 * Reduced motion, keyboard focus, Escape-to-close and a visible active state
   are part of the definition of done.
-* A panel must render something sane while the snapshot is `null`, the backend
-  is unreachable, or localStorage throws.
 
 ## 6. Contract summary
 
-* Settings: `island`, `islandMargin`, `taskNotifications` (see AGENTS.md §5).
+* Settings: `island`, `islandMargin`, `islandIdle`, `islandAutoHide`,
+  `sidebarItems.settingsButton` / `moreButton`, `taskNotifications` (see
+  AGENTS.md §5).
 * Backend: `list_task_completions` + `task-completed` event; detection in the
   session parser/ingestion path, delivery through the existing alert gate.
   `read_wechat_sessions` (Windows UI Automation, read-only) backs the WeChat
@@ -386,11 +458,17 @@ new window, a new process or a new protocol, that is a platform feature first
   cloud mail tab: account metadata in `cloud-accounts.json`, secrets in the OS
   keychain, OAuth + PKCE via a loopback listener, read-only Gmail/Graph/IMAP
   header scans. It is invoked only by the open panel (plus explicit refresh).
+  `service_status` backs the Service status panel: both public Statuspage
+  summaries are fetched concurrently, the combined report is cached for 60 s,
+  and no credential is read.
 * Placement: `monitors::sidebar_rect` island branch; popover uses `Edge::Top`.
 * Frontend: `src/routes/+page.svelte` (idle/expanded + rail),
   `src/lib/plugins/{types,registry,storage}.ts`,
-  `src/lib/plugins/panels/*`.
+  `src/lib/plugins/panels/*`, `src/lib/pet/` (simulation, skins, speech,
+  sprite import) and `src/lib/plugins/status.ts` (status view model). The ⚙
+  button calls `openDashboard('settings')`; ⋯ calls
+  `openDashboard('overview')` (the forced empty-state grip opens Settings).
 * Provider switches: Settings → Providers, tray submenu, island panel.
-* No new window label. Credential/network additions are limited to the
-  user-invoked cloud-mail commands and the keychain entries above; everything
-  else remains local-first.
+* No new window label. Network additions are limited to the user-invoked
+  cloud-mail commands and the cached public `service_status` read; plugin
+  state otherwise stays local, and no plugin reads a credential.
