@@ -191,6 +191,8 @@ export interface SidebarItems {
   logo: boolean;
   /** percent under a ring group */
   percentLabel: boolean;
+  /** the "⚙" button that opens the dashboard's Settings tab */
+  settingsButton: boolean;
   /** the "⋯" button (a grip is still drawn when nothing else is left) */
   moreButton: boolean;
 }
@@ -273,6 +275,8 @@ export interface Settings {
   islandMargin: number;
   /** Providers and plugins shown by the collapsed island. */
   islandIdle: IslandIdleSettings;
+  /** Hide the idle island as a thin handle on the top edge; hover to reveal. */
+  islandAutoHide: boolean;
   autoHide: boolean;
   autoHideDelayMs: number;
   /** close the popover after this many seconds without pointer activity; 0 = never */
@@ -828,6 +832,10 @@ export interface PopoverRequest {
   anchorX?: number | null;
   /** optional window to highlight */
   windowKind: WindowKind | null;
+  /** one line the desktop pet says about this provider; set by the sidebar */
+  petLine?: string | null;
+  /** the pet expression card shown beside that line (a `/pet/*.webp` path) */
+  petAvatar?: string | null;
 }
 
 export interface SidebarState {

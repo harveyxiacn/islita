@@ -19,3 +19,6 @@ vite.config.ts.timestamp-*
 .idea
 /.worktrees/
 /.local-build/
+# owner-supplied source art: processed cards live in static/pet/ and are
+# committed; the raw reference images stay on the owner's machine
+/v-pet/

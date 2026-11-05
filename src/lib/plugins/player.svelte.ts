@@ -11,14 +11,17 @@
 
 import { parseLrc, type LrcDoc } from './lrc';
 import { readPluginState, writePluginState } from '$lib/plugins/storage';
+import { assetUrl, type MusicTrackInfo } from '$lib/api';
 
 export interface Track {
   id: string;
   /** File name without its extension, shown in the player. */
   name: string;
   fileName: string;
-  /** Object URL for this session only. */
+  /** Object URL for files picked this session, or an asset URL for a folder. */
   url: string;
+  /** Present for tracks that came from a music folder; used for de-duplication. */
+  path?: string;
   durationMs: number;
   lyrics: LrcDoc | null;
 }
@@ -41,6 +44,11 @@ function makeId(): string {
   } catch {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
+}
+
+/** Object URLs must be released; asset-protocol URLs must not be. */
+function release(track: Track): void {
+  if (track.url.startsWith('blob:')) URL.revokeObjectURL(track.url);
 }
 
 class PlayerStore {
@@ -116,6 +124,40 @@ class PlayerStore {
         url,
         durationMs: 0,
         lyrics: null,
+      });
+    }
+    if (added.length === 0) return 0;
+    this.tracks = [...this.tracks, ...added];
+    if (this.index === -1) this.select(this.tracks.length - added.length, false);
+    return added.length;
+  }
+
+  /**
+   * Add the tracks of a scanned folder. Their URLs are asset-protocol URLs,
+   * not object URLs, so they survive as long as the folder is re-scanned.
+   * Tracks already in the playlist (same path) are skipped.
+   */
+  addFolderTracks(tracks: readonly MusicTrackInfo[]): number {
+    const seen = new Set<string>();
+    for (const track of this.tracks) {
+      if (track.path) seen.add(track.path.toLowerCase());
+    }
+    const added: Track[] = [];
+    for (const info of tracks) {
+      if (!info.path) continue;
+      const key = info.path.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const doc = info.lyrics ? parseLrc(info.lyrics) : null;
+      const lyrics = doc && doc.lines.length > 0 ? doc : null;
+      added.push({
+        id: makeId(),
+        name: lyrics?.title.trim() || info.name,
+        fileName: info.fileName,
+        url: assetUrl(info.path),
+        path: info.path,
+        durationMs: 0,
+        lyrics,
       });
     }
     if (added.length === 0) return 0;
@@ -229,7 +271,7 @@ class PlayerStore {
   remove(index: number): void {
     const track = this.tracks[index];
     if (!track) return;
-    URL.revokeObjectURL(track.url);
+    release(track);
     const wasCurrent = index === this.index;
     const nextTracks = this.tracks.filter((_, i) => i !== index);
     if (nextTracks.length === 0) {
@@ -249,7 +291,7 @@ class PlayerStore {
   clear(): void {
     this.audio?.pause();
     if (this.audio) this.audio.removeAttribute('src');
-    for (const track of this.tracks) URL.revokeObjectURL(track.url);
+    for (const track of this.tracks) release(track);
     this.tracks = [];
     this.index = -1;
     this.playing = false;

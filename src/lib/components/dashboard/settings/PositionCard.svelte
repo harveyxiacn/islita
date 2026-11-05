@@ -102,6 +102,14 @@
       />
     </Field>
 
+    <Field label={t('settings.islandAutoHide')} hint={t('settings.islandAutoHide.hint')}>
+      <Toggle
+        checked={s.islandAutoHide}
+        label={t('settings.islandAutoHide')}
+        onchange={(v) => void settings.patch({ islandAutoHide: v })}
+      />
+    </Field>
+
     <Field label={t('settings.islandIdleProviders')} hint={t('settings.islandIdleProviders.hint')} wide>
       {#if idleProviderOptions.length > 0}
         <div class="picks" role="group" aria-label={t('settings.islandIdleProviders')}>

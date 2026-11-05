@@ -414,6 +414,8 @@ pub struct SidebarItems {
     /// percent under a ring group; replaces the deprecated top-level
     /// `showPercentLabel`
     pub percent_label: bool,
+    /// the "⚙" button that opens the dashboard's Settings tab
+    pub settings_button: bool,
     /// the "⋯" button (a grip is still drawn when nothing else is left)
     pub more_button: bool,
 }
@@ -427,6 +429,7 @@ impl Default for SidebarItems {
             other: true,
             logo: true,
             percent_label: true,
+            settings_button: true,
             more_button: true,
         }
     }
@@ -613,6 +616,10 @@ pub struct Settings {
     /// list = the busiest provider summary.
     #[serde(default)]
     pub island_idle: IslandIdleSettings,
+    /// Collapse the idle island to a thin handle on the top edge; the handle
+    /// reveals the capsule on hover and only expands after the pointer rests.
+    #[serde(default)]
+    pub island_auto_hide: bool,
     pub auto_hide: bool,
     pub auto_hide_delay_ms: u64,
     /// The popover closes after this long without any pointer activity on the
@@ -764,6 +771,7 @@ impl Default for Settings {
             island: false,
             island_margin: 12,
             island_idle: IslandIdleSettings::default(),
+            island_auto_hide: false,
             auto_hide: false,
             auto_hide_delay_ms: 800,
             popover_timeout_sec: 10,
@@ -1200,6 +1208,14 @@ pub struct PopoverRequest {
     pub anchor_x: Option<f64>,
     #[serde(default)]
     pub window_kind: Option<WindowKind>,
+    /// One line the desktop pet says about this provider, already localised by
+    /// the sidebar. Absent when the pet is hidden or the user imported a
+    /// custom sprite (which has no bundled voice).
+    #[serde(default)]
+    pub pet_line: Option<String>,
+    /// `/pet/*.webp` expression card drawn beside `pet_line`.
+    #[serde(default)]
+    pub pet_avatar: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]

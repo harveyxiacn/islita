@@ -57,6 +57,7 @@ export const SIDEBAR_ITEM_KEYS: readonly (keyof SidebarItems)[] = [
   'other',
   'logo',
   'percentLabel',
+  'settingsButton',
   'moreButton',
 ];
 

@@ -22,6 +22,8 @@ pub mod forecast;
 pub mod ingest;
 #[path = "mail.rs"]
 pub mod mail;
+#[path = "music.rs"]
+pub mod music;
 #[path = "onboarding.rs"]
 pub mod onboarding;
 #[path = "pricing.rs"]
@@ -34,6 +36,8 @@ pub mod settings;
 pub mod settings_history;
 #[path = "settings_io.rs"]
 pub mod settings_io;
+#[path = "status.rs"]
+pub mod status;
 #[path = "store/mod.rs"]
 pub mod store;
 #[path = "tasks.rs"]

@@ -174,6 +174,8 @@
       {history}
       {pinned}
       paused={s.pollingPaused}
+      petLine={target?.petLine ?? null}
+      petAvatar={target?.petAvatar ?? null}
       onClose={() => void popoverHide()}
       onDetails={() => void openDashboard('history')}
     />

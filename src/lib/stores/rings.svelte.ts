@@ -2,9 +2,9 @@
 //
 // One `RingItem` is one *rendered unit* in the pill — a ring group. In
 // `ringMode = "concentric"` a group stacks up to three arcs for a single
-// provider (outer weekly, inner 5-hour, innermost per-model scope); in the
-// other two modes a group is a plain single-arc ring. Everything downstream
-// (hover targeting, popover requests, the collapsed handle colour) works on the
+// provider (broadest first — weekly outside 5-hour, OpenCode's 30-day outside
+// both — plus the innermost per-model scope); in the other two modes a group
+// is a plain single-arc ring. Everything downstream (hover targeting, popover requests, the collapsed handle colour) works on the
 // group, so the sidebar loop is identical in all three modes.
 //
 // *Which* providers and windows reach this file is decided by

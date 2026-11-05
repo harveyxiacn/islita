@@ -40,6 +40,7 @@
     hoverReport,
     onSidebarState,
     openDashboard,
+    onTaskCompleted,
     popoverHide,
     popoverSetPinned,
     popoverShow,
@@ -54,8 +55,12 @@
   import { detectRingEvents, levelsOf, windowKey, type RingEvent, type RingEventKind, type WindowLevel } from '$lib/ring-events';
   import { handlePeak, handleSegments, labelLayout, type LabelLayout } from '$lib/sidebar-visuals';
   import { t, tDyn } from '$lib/i18n/i18n.svelte';
+  import { PET_PLUGIN_ID, parsePetState, type PetState } from '$lib/pet/pet';
+  import { petVoice, quotaSituation, sayKey, speechAvatar, type PetVoice } from '$lib/pet/speech';
+  import { petSpeech } from '$lib/pet/speech.svelte';
   import { attention } from '$lib/plugins/attention.svelte';
   import { pluginById, ISLAND_PLUGINS } from '$lib/plugins/registry';
+  import { readPluginState } from '$lib/plugins/storage';
   import { handleColorOf, rings, type RingItem } from '$lib/stores/rings.svelte';
   import { settings } from '$lib/stores/settings.svelte';
   import { snapshot } from '$lib/stores/snapshot.svelte';
@@ -127,6 +132,13 @@
   let islandHold = $state(false);
   let islandHoldTimer: ReturnType<typeof setTimeout> | undefined;
   /**
+   * Auto-hide: the idle capsule collapses into a thin handle on the top edge.
+   * Pointing at the handle reveals the capsule, resting on it expands the
+   * board, and leaving hides it again after `autoHideDelayMs`.
+   */
+  let islandHidden = $state(false);
+  let islandDwellTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
    * The pointer landed on the idle capsule: the first movement expands it.
    * Ring hover/click is ignored for that beat so a popover is never anchored
    * to the summary ring's pre-expansion position.
@@ -166,7 +178,14 @@
   const PANEL_GAP = 7;
   /** Long enough for the 420 ms width/height spring to settle. */
   const ISLAND_MORPH_MS = 440;
-  const ISLAND_HOLD_MS = ISLAND_MORPH_MS + 90;
+  /** Hold the native window at the open box until the delayed close lands. */
+  const ISLAND_HOLD_MS = ISLAND_MORPH_MS + 250;
+  /** The hidden island: a small hit box with a thin visible handle. */
+  const PEEK_W = 96;
+  const PEEK_H = 24;
+  /** Resting on the revealed capsule this long expands the board. */
+  const ISLAND_DWELL_MS = 280;
+  const autoHideIsland = $derived(island && s.islandAutoHide);
 
   /** The box the capsule morphs to; the stage reserves the larger box. */
   const pillTargetW = $derived((islandIdle ? idleW : openW) + ISLAND_BORDER);
@@ -174,12 +193,14 @@
   const stageExpanded = $derived(island && (islandExpanded || islandHold));
   const stageW = $derived.by(() => {
     if (!island) return 0;
+    if (islandHidden) return PEEK_W;
     const pill = (stageExpanded ? Math.max(openW, idleW) : idleW) + ISLAND_BORDER;
     const panel = activePlugin ? panelW + ISLAND_BORDER : 0;
     return Math.max(pill, panel, 72);
   });
   const stageH = $derived.by(() => {
     if (!island) return 0;
+    if (islandHidden) return PEEK_H;
     const pill = (stageExpanded ? Math.max(openH, idleH) : idleH) + ISLAND_BORDER;
     const panel = activePlugin ? panelH + ISLAND_BORDER + PANEL_GAP : 0;
     return Math.max(pill + panel, 40);
@@ -191,6 +212,36 @@
     if (!islandReady && island && idleW > 0 && idleH > 0 && openW > 0 && openH > 0) {
       islandReady = true;
     }
+  });
+
+  // Auto-hide: schedule the collapse once the island is idle, measured and
+  // unoccupied. Every dependency restarts the timer, so leaving midway, opening
+  // a panel or the collapse animation itself simply postpones it.
+  $effect(() => {
+    if (
+      !autoHideIsland ||
+      !islandReady ||
+      islandHidden ||
+      stageHovered ||
+      activePluginId !== null ||
+      islandExpanded ||
+      islandHold
+    ) {
+      return;
+    }
+    const delay = Math.max(300, s.autoHideDelayMs);
+    const timer = setTimeout(() => {
+      if (stageHovered || activePluginId !== null || islandExpanded || islandHold) return;
+      islandHidden = true;
+      pinnedKey = null;
+      void popoverHide();
+    }, delay);
+    return () => clearTimeout(timer);
+  });
+
+  // Turning the option off (or leaving island mode) brings the capsule back.
+  $effect(() => {
+    if (!s.islandAutoHide && islandHidden) islandHidden = false;
   });
 
   /** Busiest provider, used as the idle island's single ring. */
@@ -205,7 +256,8 @@
   });
 
   function reportSize(size: SizeReport) {
-    if (!collapsed) expandedSize = size;
+    // The peek is not the bar's content: keep the expanded box to restore.
+    if (!collapsed && !islandHidden) expandedSize = size;
     // A collapsed handle must not overwrite the size to restore on hover.
     void sidebarRelayout(expandedSize.width, expandedSize.height);
   }
@@ -281,27 +333,64 @@
     untrack(() => {
       const thKey = `${th.warn}/${th.critical}`;
       const next = levelsOf(snap, th);
-      const events: RingEvent[] = animate && thKey === prevThresholds ? detectRingEvents(prevLevels, next) : [];
+      const events: RingEvent[] = thKey === prevThresholds ? detectRingEvents(prevLevels, next) : [];
       prevLevels = next;
       prevThresholds = thKey;
       if (events.length === 0) return;
+      // The pet reacts even when the ring animations are switched off; the
+      // animation itself still follows `sidebarAnimations`.
+      if (savedPetVoice()) {
+        for (const event of events) petSpeech.note(event.kind);
+      }
+      if (!animate) return;
       for (const e of events) fx[e.key] = { kind: e.kind, id: ++fxSeq };
       clearTimeout(fxTimer);
       fxTimer = setTimeout(() => (fx = {}), 1000);
     });
   });
 
+  /**
+   * A provider that stops being reachable gets a pet line and a rail dot. Only
+   * the transition into a bad state is announced, so a long outage does not
+   * keep replacing the latest message.
+   */
+  let prevStatuses: Map<string, string> | null = null;
+  $effect(() => {
+    const snap = snapshot.value;
+    if (snap === null) return;
+    untrack(() => {
+      const next = new Map(snap.providers.map((quota) => [quotaKey(quota), quota.status]));
+      if (prevStatuses && savedPetVoice()) {
+        for (const [key, status] of next) {
+          const before = prevStatuses!.get(key);
+          if (before === 'ok' && status !== 'ok' && status !== 'disabled') {
+            petSpeech.note('providerDown');
+            break;
+          }
+        }
+      }
+      prevStatuses = next;
+    });
+  });
+
   onMount(() => {
     const disposers: Array<() => void> = [settings.init(), snapshot.init()];
     let un: Unlisten | null = null;
+    let unTask: Unlisten | null = null;
     let disposed = false;
     void onSidebarState((state) => {
       expanded = state.expanded;
       if (!state.pinned) pinnedKey = null;
     }).then((u) => (disposed ? u() : (un = u)));
+    // The pet reacts only once the user has actually used the pet panel; a
+    // custom imported sprite still speaks in its selected skin's voice.
+    void onTaskCompleted(() => {
+      if (savedPetVoice()) petSpeech.note('taskDone');
+    }).then((u) => (disposed ? u() : (unTask = u)));
     return () => {
       disposed = true;
       un?.();
+      unTask?.();
       clearTimeout(fxTimer);
       clearTimeout(islandCollapseTimer);
       clearTimeout(panelCloseTimer);
@@ -340,6 +429,7 @@
   function expandIsland() {
     if (!island) return;
     clearTimeout(islandCollapseTimer);
+    clearTimeout(islandDwellTimer);
     if (islandExpanded) return;
     // Cancel a pending collapse hold: this is a re-entry, not a new opening.
     clearTimeout(islandHoldTimer);
@@ -353,6 +443,29 @@
       void sidebarRelayout(w, h);
     }
     islandExpanded = true;
+  }
+
+  /** Swap the top-edge handle for the idle capsule. */
+  function revealIsland() {
+    if (!islandHidden) return;
+    // Resize the native window first: it is only 24 px tall while hidden, so
+    // rendering the capsule before the resize lands would clip it.
+    if (idleW > 0 && idleH > 0) {
+      void sidebarRelayout(idleW + ISLAND_BORDER, idleH + ISLAND_BORDER);
+    }
+    islandHidden = false;
+  }
+
+  /** Rest on the revealed capsule before opening the board (auto-hide only). */
+  function scheduleIslandExpand() {
+    clearTimeout(islandDwellTimer);
+    if (!autoHideIsland) {
+      expandIsland();
+      return;
+    }
+    islandDwellTimer = setTimeout(() => {
+      if (stageHovered) expandIsland();
+    }, ISLAND_DWELL_MS);
   }
 
   /**
@@ -399,17 +512,29 @@
 
   function onStageEnter() {
     stageHovered = true;
+    revealIsland();
     if (island && islandIdle) {
       suppressRingHover = true;
       clearTimeout(suppressRingTimer);
       suppressRingTimer = setTimeout(() => (suppressRingHover = false), 500);
     }
-    expandIsland();
+    scheduleIslandExpand();
     reportHover(true);
+  }
+
+  /** The hidden handle is the only focusable part of the island. */
+  function onStageKeydown(ev: KeyboardEvent) {
+    if (!islandHidden) return;
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      revealIsland();
+      expandIsland();
+    }
   }
 
   function onStageLeave() {
     stageHovered = false;
+    clearTimeout(islandDwellTimer);
     scheduleIslandCollapse();
     reportHover(false);
   }
@@ -417,11 +542,13 @@
   function onStageFocusIn(ev: FocusEvent) {
     const target = ev.target;
     stageKeyboardFocus = target instanceof HTMLElement && target.matches(':focus-visible');
+    revealIsland();
     if (island && islandIdle) {
       suppressRingHover = true;
       clearTimeout(suppressRingTimer);
       suppressRingTimer = setTimeout(() => (suppressRingHover = false), 500);
     }
+    // Keyboard focus must not have to wait out the hover dwell.
     expandIsland();
   }
 
@@ -492,8 +619,24 @@
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
   }
 
+  /** The saved pet, or null until the user has used the pet panel. */
+  function savedPet(): PetState | null {
+    const raw = readPluginState<unknown>(PET_PLUGIN_ID, null);
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    return parsePetState(raw, Date.now());
+  }
+
+  /** The saved pet's voice, or null until the user has used the pet panel. */
+  function savedPetVoice(): PetVoice | null {
+    const pet = savedPet();
+    return pet ? petVoice(pet.skin, pet.deepseekForm) : null;
+  }
+
   function requestPopover(item: RingItem, el: HTMLElement) {
     const anchor = anchorOf(el);
+    const pet = savedPet();
+    const voice = pet ? petVoice(pet.skin, pet.deepseekForm) : null;
+    const situation = voice ? quotaSituation(item.quota, s) : null;
     void popoverShow({
       provider: item.quotaKey,
       ringIndex: item.index,
@@ -501,6 +644,12 @@
       anchorY: anchor.y,
       anchorX: anchor.x,
       windowKind: item.labelWindow?.kind ?? null,
+      petLine: voice && situation ? tDyn(sayKey(voice, situation)) : null,
+      // An imported custom sprite lives in localStorage and cannot travel
+      // with the event; the line still speaks, only the bundled face is shown
+      // when the user is on the bundled art.
+      petAvatar:
+        pet && voice && situation && !pet.sprite ? speechAvatar(voice, situation) : null,
     });
   }
 
@@ -647,6 +796,30 @@
   </div>
 {/snippet}
 
+{#snippet barActions()}
+  {#if s.sidebarItems.settingsButton || s.sidebarItems.moreButton}
+    <div class="bar-actions">
+      {#if s.sidebarItems.settingsButton}
+        <button
+          class="chrome gear"
+          onclick={() => void openDashboard('settings')}
+          ondblclick={(e) => e.stopPropagation()}
+          aria-label={t('sidebar.settings')}
+          title={t('sidebar.settings')}
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.1"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .66.4 1.26 1 1.51H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path>
+          </svg>
+        </button>
+      {/if}
+      {#if s.sidebarItems.moreButton}
+        <button class="chrome dots" onclick={() => void openDashboard('overview')} ondblclick={(e) => e.stopPropagation()} aria-label={t('sidebar.more')} title={t('sidebar.more')}>⋯</button>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
 {#snippet barContent()}
   {#if loading}
     {#each placeholders as i (i)}
@@ -666,9 +839,7 @@
     {#each items as item (item.key)}
       {@render ringView(item)}
     {/each}
-    {#if s.sidebarItems.moreButton}
-      <button class="dots" onclick={() => void openDashboard('overview')} ondblclick={(e) => e.stopPropagation()} aria-label={t('sidebar.more')}>⋯</button>
-    {/if}
+    {@render barActions()}
   {/if}
 {/snippet}
 
@@ -676,6 +847,8 @@
   {#if id === 'mail' && attention.mailUnread > 0}
     <span class="tool-badge" aria-hidden="true">{attention.mailUnread > 9 ? '9+' : attention.mailUnread}</span>
   {:else if id === 'calendar' && attention.calendarSoon}
+    <span class="tool-dot" aria-hidden="true"></span>
+  {:else if id === 'pet' && petSpeech.unread}
     <span class="tool-dot" aria-hidden="true"></span>
   {/if}
 {/snippet}
@@ -755,9 +928,7 @@
       {#each items as item (item.key)}
         {@render ringView(item)}
       {/each}
-      {#if s.sidebarItems.moreButton}
-        <button class="dots" onclick={() => void openDashboard('overview')} ondblclick={(e) => e.stopPropagation()} aria-label={t('sidebar.more')}>⋯</button>
-      {/if}
+      {@render barActions()}
     {/if}
   </div>
 
@@ -789,6 +960,7 @@
   {/if}
 {/snippet}
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex (role="button" only while the island is hidden) -->
 <div
   class="stage"
   data-edge={island ? 'top' : s.edge}
@@ -802,7 +974,10 @@
   onfocusin={onStageFocusIn}
   onfocusout={onStageFocusOut}
   onmousemove={heartbeat}
-  role="presentation"
+  onkeydown={onStageKeydown}
+  tabindex={islandHidden ? 0 : undefined}
+  role={islandHidden ? 'button' : 'presentation'}
+  aria-label={islandHidden ? t('island.reveal') : undefined}
 >
   <div class="sr-only" role="status" aria-live="polite">{statusAnnouncement}</div>
   {#if collapsed}
@@ -826,6 +1001,11 @@
       {/each}
     </div>
   {:else if island}
+    {#if islandHidden}
+      <!-- auto-hide: only a thin handle remains on the top edge; the whole
+           stage is its 96 × 24 hit area and keyboard target -->
+      <div class="island-peek" aria-hidden="true"></div>
+    {:else}
     <!-- the island is never dragged: a drop would fight the top-centre
          placement watchdog, so the whole capsule is a normal surface. The
          panel is a sibling surface, not a flex child of the capsule: its
@@ -873,6 +1053,7 @@
         </section>
       {/if}
     </div>
+    {/if}
   {:else}
     <div class="pill surface" class:compact use:dragHandle={onDrag} ondblclick={() => void openDashboard('overview')} role="presentation">
       {@render barContent()}
@@ -902,6 +1083,36 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+  }
+
+  /* The hidden island: a 96 × 24 transparent hit box with a 4 px handle in the
+     middle, so pointing near the top edge is forgiving. */
+  .island-peek {
+    width: 3.5rem;
+    height: 0.25rem;
+    margin-top: 0.625rem;
+    border-radius: 999px;
+    background: var(--muted);
+    opacity: 0.45;
+    transition:
+      width 220ms var(--ease-out),
+      opacity var(--dur-ui) var(--ease-out),
+      background var(--dur-ui) var(--ease-out);
+  }
+
+  .stage[data-island]:hover .island-peek,
+  .stage[data-island]:focus-visible .island-peek {
+    width: 4.25rem;
+    background: var(--focus);
+    opacity: 0.95;
+  }
+
+  .stage[data-island]:focus-visible {
+    outline: none;
+  }
+
+  .stage[data-island]:focus-visible .island-peek {
+    box-shadow: 0 0 0 2px var(--focus);
   }
 
   .pill {
@@ -1001,51 +1212,69 @@
     transform: scale(1.06);
   }
 
-  .dots {
-    position: relative;
-    display: block;
-    width: 100%;
-    border-radius: 0.25rem;
+  /* Chrome under the rings: the gear (settings) and the "⋯" (dashboard).
+     Both are compact icons in one row, so the pill grows by one icon row at
+     most and the column footprint stays inside the ring's width. */
+  .bar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.0625rem;
     margin-top: -0.375rem;
-    padding: 0;
-    font-size: 1rem;
-    line-height: 0.6;
-    color: var(--faint);
-    letter-spacing: 0.1em;
-    transition: color var(--dur-ui) var(--ease-out);
   }
 
-  .dots:hover {
+  .chrome {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 0.25rem;
+    color: var(--faint);
+    transition:
+      color var(--dur-ui) var(--ease-out),
+      background var(--dur-ui) var(--ease-out);
+  }
+
+  .chrome:hover {
+    background: var(--surface-2);
     color: var(--text);
   }
 
-  /* The glyph is ~10px tall; an invisible box makes the target at least 24px
-     without moving anything. In a column it grows downwards, into the pill's
-     bottom padding, so it never covers the ring above. */
-  .dots::before {
+  /* The glyphs are ~10px; an invisible box keeps the target at least 24px
+     without moving anything. */
+  .chrome::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    width: max(100%, 24px);
-    height: max(1.5rem, 24px);
+    top: 50%;
+    left: 50%;
+    width: max(100%, 1.5rem);
+    height: max(100%, 1.5rem);
+    transform: translate(-50%, -50%);
   }
 
-  /* In a row the dots sit beside the last ring instead of under it; the
-     negative margin keeps them tucked against the group either way. */
-  .stage[data-edge='top'] .dots,
-  .stage[data-edge='bottom'] .dots {
-    width: auto;
-    align-self: center;
+  .dots {
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+    letter-spacing: 0.1em;
+  }
+
+  /* The empty state renders a lone "⋯" as the grip; it must stay clickable
+     even when every other item is hidden. */
+  .slot.empty .dots {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: 0;
+    border-radius: 0.25rem;
+  }
+
+  /* In a row the buttons sit beside the last ring instead of under it. */
+  .stage[data-edge='top'] .bar-actions,
+  .stage[data-edge='bottom'] .bar-actions {
     margin-top: 0;
     margin-left: -0.375rem;
-  }
-
-  /* in a row it grows to the right, centred on the glyph's line */
-  .stage[data-edge='top'] .dots::before,
-  .stage[data-edge='bottom'] .dots::before {
-    top: 50%;
-    transform: translateY(-50%);
   }
 
   /* ---- dynamic island -------------------------------------------------
@@ -1068,6 +1297,22 @@
     border-radius: 999px;
     box-shadow: var(--bar-shadow), 0 18px 46px -20px rgb(0 0 0 / 0.55);
     transform-origin: 50% 0;
+    /* Closing: hold the box for one beat while the open board fades out
+       (70 ms), then shrink around the already-idle content. Opening overrides
+       this below and starts immediately. */
+    transition:
+      width 440ms cubic-bezier(0.16, 1, 0.3, 1) 220ms,
+      height 440ms cubic-bezier(0.16, 1, 0.3, 1) 220ms,
+      border-radius 300ms var(--ease-out),
+      box-shadow 220ms var(--ease-out);
+  }
+
+  /* The first measurement sizes the capsule; do not animate that one. */
+  .stage[data-island] .pill.island:not(.island-ready) {
+    transition: none;
+  }
+
+  .stage[data-island] .pill.island.island-open {
     transition:
       width 440ms cubic-bezier(0.16, 1, 0.3, 1),
       height 440ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -1101,29 +1346,37 @@
     opacity: 1;
     pointer-events: auto;
     transform: translate(-50%, -50%) scale(1);
+    /* closing: fade in at once so the capsule is never empty while the
+       board leaves; the delayed width/height shrink follows the swap */
     transition:
-      opacity 130ms var(--ease-out),
+      opacity 100ms var(--ease-out),
       transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1);
   }
 
+  /* The outgoing layer leaves while the box is still growing, and the
+     incoming one only fades in once the box is nearly at its target size.
+     Cross-fading the two boards earlier made the wider board hang over the
+     capsule and get clipped by `overflow: hidden` for a few frames — the
+     visible "flash" on expand/collapse. */
   .pill.island.island-open .idle-layer {
     opacity: 0;
     pointer-events: none;
     transform: translate(-50%, -50%) scale(0.97);
     transition:
-      opacity 90ms linear,
-      transform 140ms var(--ease-out);
+      opacity 60ms linear 180ms,
+      transform 180ms var(--ease-out) 160ms;
   }
 
   .pill.island .open-layer {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transform: translate(-50%, -50%) scale(0.96);
+    transform: translate(-50%, -50%) scale(0.94);
+    /* closing: leave quickly at the full box size, before the shrink starts */
     transition:
-      opacity 120ms linear,
-      transform 180ms var(--ease-out),
-      visibility 0s linear 120ms;
+      opacity 60ms linear,
+      transform 100ms var(--ease-out),
+      visibility 0s linear 60ms;
   }
 
   .pill.island.island-open .open-layer {
@@ -1131,9 +1384,10 @@
     visibility: visible;
     pointer-events: auto;
     transform: translate(-50%, -50%) scale(1);
+    /* opening: the 440 ms width spring is ~97 % done at 230 ms */
     transition:
-      opacity 160ms var(--ease-out) 50ms,
-      transform 280ms cubic-bezier(0.2, 1, 0.3, 1) 30ms,
+      opacity 140ms var(--ease-out) 250ms,
+      transform 220ms cubic-bezier(0.2, 1, 0.3, 1) 220ms,
       visibility 0s;
   }
 

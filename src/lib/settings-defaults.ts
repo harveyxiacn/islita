@@ -46,6 +46,7 @@ export const defaultSettings: Settings = {
   islandMargin: 12,
   /** collapsed island content; empty providers = busiest summary */
   islandIdle: { providers: [], plugins: [] },
+  islandAutoHide: false,
   autoHide: false,
   autoHideDelayMs: 800,
   popoverTimeoutSec: 10,

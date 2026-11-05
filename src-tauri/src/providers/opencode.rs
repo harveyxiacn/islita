@@ -30,8 +30,8 @@
 //! `opencode.ai`.
 
 use super::{
-    clamp_percent, degraded, empty_quota, mark_primary, normalize_rfc3339, now_rfc3339,
-    rate_limited, retry_after_of, send_with_retry, write_cache, Provider, ProviderCtx, OPENCODE_ID,
+    clamp_percent, degraded, empty_quota, normalize_rfc3339, now_rfc3339, rate_limited,
+    retry_after_of, send_with_retry, write_cache, Provider, ProviderCtx, OPENCODE_ID,
 };
 use crate::model::{
     ExtraSeverity, ProviderInfo, ProviderQuota, ProviderStatus, QuotaExtra, QuotaWindow, WindowKind,
@@ -121,14 +121,36 @@ fn meter_window(kind: WindowKind, label: &str, window_seconds: u64, meter: &Mete
 }
 
 /// Go's three allowances as the bar's windows: 5-hour, weekly, 30-day.
+///
+/// Unlike the 5-hour-first providers, Go's windows can differ sharply: the
+/// rolling allowance may be untouched while the 30-day one is nearly spent.
+/// The percentage label therefore speaks for the tightest window, not for
+/// whichever allowance happens to reset first.
 pub fn map_go(windows: &UsageWindows) -> Vec<QuotaWindow> {
     let mut out = vec![
         meter_window(WindowKind::FiveHour, "5-hour", 5 * 3600, &windows.rolling),
         meter_window(WindowKind::SevenDay, "Weekly", 7 * 86_400, &windows.weekly),
         meter_window(WindowKind::Other, "30-day", 30 * 86_400, &windows.monthly),
     ];
-    mark_primary(&mut out);
+    mark_tightest(&mut out);
     out
+}
+
+/// Mark the account-wide window closest to its cap as primary. Ties go to the
+/// longer window (the last one), which is the allowance that resets last.
+fn mark_tightest(windows: &mut [QuotaWindow]) {
+    for w in windows.iter_mut() {
+        w.is_primary = false;
+    }
+    if let Some(i) = windows
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| w.scope.is_none())
+        .max_by(|(_, a), (_, b)| a.used_percent.total_cmp(&b.used_percent))
+        .map(|(i, _)| i)
+    {
+        windows[i].is_primary = true;
+    }
 }
 
 fn used_ratio(budget: &Budget) -> f64 {
@@ -626,14 +648,19 @@ mod tests {
         assert_eq!(q.windows[0].label, "5-hour");
         assert_eq!(q.windows[0].window_seconds, Some(18_000));
         assert!((q.windows[0].used_percent - 42.0).abs() < 1e-9);
-        assert!(q.windows[0].is_primary);
+        assert!(!q.windows[0].is_primary);
         assert_eq!(q.windows[1].kind, WindowKind::SevenDay);
         assert_eq!(q.windows[1].label, "Weekly");
         assert!((q.windows[1].used_percent - 18.0).abs() < 1e-9);
+        assert!(!q.windows[1].is_primary);
         assert_eq!(q.windows[2].kind, WindowKind::Other);
         assert_eq!(q.windows[2].label, "30-day");
         assert_eq!(q.windows[2].window_seconds, Some(2_592_000));
         assert!((q.windows[2].used_percent - 100.0).abs() < 1e-9);
+        assert!(
+            q.windows[2].is_primary,
+            "the nearly exhausted 30-day allowance must drive the label, not the untouched 5-hour one"
+        );
         assert_eq!(
             q.windows[0].resets_at.as_deref(),
             Some("2026-10-24T17:00:00Z")

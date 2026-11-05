@@ -9,7 +9,14 @@ import {
   defaultSidebarItems,
 } from '../src/lib/sidebar-items';
 import { mockSettings, mockSnapshot } from '../src/lib/mock';
-import type { AppSnapshot, ProviderQuota, QuotaWindow, Settings, SidebarItems } from '../src/lib/types';
+import type {
+  AppSnapshot,
+  ProviderId,
+  ProviderQuota,
+  QuotaWindow,
+  Settings,
+  SidebarItems,
+} from '../src/lib/types';
 
 function settingsWith(
   patch: Omit<Partial<Settings>, 'sidebarItems'> & { sidebarItems?: Partial<SidebarItems> }
@@ -36,7 +43,7 @@ const win = (
   ...extra,
 });
 
-function quota(provider: 'claude' | 'codex', windows: QuotaWindow[]): ProviderQuota {
+function quota(provider: ProviderId, windows: QuotaWindow[]): ProviderQuota {
   return {
     provider,
     displayName: provider,
@@ -106,6 +113,19 @@ test('filtering happens before the groups are built, in all three ring modes', (
   expect(
     kinds(barGroups(q, settingsWith({ ringMode: 'all', sidebarItems: { weekly: false } })))
   ).toEqual([['five_hour:-']]);
+});
+
+test('OpenCode Go stacks all three allowances, broadest first', () => {
+  // The 5-hour allowance can be untouched while the 30-day one is nearly
+  // spent; the ring must show all three and label the tightest.
+  const q = quota('opencode', [
+    win('five_hour', 0, { windowSeconds: 5 * 3600 }),
+    win('seven_day', 13, { windowSeconds: 7 * 86_400 }),
+    win('other', 59, { windowSeconds: 30 * 86_400, isPrimary: true }),
+  ]);
+  const group = barGroups(q, settingsWith({ ringMode: 'concentric' }))[0];
+  expect(group.map((w) => w.kind)).toEqual(['other', 'seven_day', 'five_hour']);
+  expect(labelWindowOf(group)?.usedPercent).toBe(59);
 });
 
 test('Codex never gets the scoped inner ring, whatever sidebarItems says', () => {
@@ -182,7 +202,7 @@ test('the bar-wide severity ignores everything that was hidden from the bar', ()
 
   // hide the critical window, the whole provider, and every kind: the alarm stays
   const blind = settingsWith({
-    sidebarItems: { fiveHour: false, weekly: false, scoped: false, other: false, logo: false, percentLabel: false, moreButton: false },
+    sidebarItems: { fiveHour: false, weekly: false, scoped: false, other: false, logo: false, percentLabel: false, settingsButton: false, moreButton: false },
     providers: {
       claude: { enabled: true, showInSidebar: false, order: 0 },
       codex: { enabled: true, showInSidebar: false, order: 1 },

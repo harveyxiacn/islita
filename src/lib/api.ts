@@ -46,10 +46,15 @@ import type {
   WindowUsageQuery,
 } from './types';
 import type { AnalysisSettings, EvaluationPreview, EvaluationReport, RequirementAssessment, SessionDetail, SessionInsights, SessionListQuery, SessionListResult, TaskCompletion } from './session-types';
+import type { ServiceStatusReport } from './plugins/status';
 import type { SettingsPatch } from './settings-writer';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+/** Turn a local path into a URL the webview may load (asset protocol). */
+export const assetUrl = (path: string): string => (isTauri() ? convertFileSrc(path) : path);
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (isTauri()) {
@@ -100,6 +105,8 @@ export const saveEvaluationReview = (id: string, requirements: RequirementAssess
 export const clearSessionAnalysis = (provider: string, sessionId: string) => invoke<void>('clear_session_analysis', { provider, sessionId });
 export const getQuotaHistory = (query: QuotaHistoryQuery) => invoke<QuotaSample[]>('get_quota_history', { query });
 export const getWindowUsage = (query: WindowUsageQuery) => invoke<TokenTotals[]>('get_window_usage', { query });
+/** Claude / OpenAI status pages; `force` bypasses the backend's 60 s cache. */
+export const serviceStatus = (force = false) => invoke<ServiceStatusReport>('service_status', { force });
 export const getPricing = () => invoke<PricingTable>('get_pricing');
 export const setPricing = (table: PricingTable) => invoke<PricingTable>('set_pricing', { table });
 /** Refreshes the configured source, or the official project source when pricingUrl is empty. */
@@ -226,6 +233,25 @@ export const openDropbox = () => invoke<string>('open_dropbox');
 // ---- local mail (headers only) ----
 export const pickMailFolder = () => invoke<string | null>('pick_mail_folder');
 export const scanMailFolder = (folder: string, limit = 6) => invoke<MailScan>('scan_mail_folder', { folder, limit });
+
+export interface MusicTrackInfo {
+  name: string;
+  fileName: string;
+  path: string;
+  lyrics: string | null;
+}
+
+export interface MusicFolderScan {
+  folder: string;
+  tracks: MusicTrackInfo[];
+  skipped: number;
+}
+
+/** Native folder dialog for the local music library; null when cancelled. */
+export const pickMusicFolder = () => invoke<string | null>('pick_music_folder');
+/** List audio files (and sibling LRC text) under a chosen folder. */
+export const scanMusicFolder = (folder: string) =>
+  invoke<MusicFolderScan>('scan_music_folder', { folder });
 export const listCloudMailAccounts = () => invoke<CloudMailAccount[]>('mail_cloud_list');
 export const addCloudMailPassword = (request: CloudMailPasswordRequest) =>
   invoke<CloudMailAccount>('mail_cloud_add_password', { request });

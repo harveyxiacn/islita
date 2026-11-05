@@ -10,7 +10,7 @@ async function openIsland(page: Page) {
   await page.goto(ISLAND);
   await expect(page.locator('.stage')).toHaveAttribute('data-island', 'true');
   await page.locator('.stage').hover();
-  await expect(page.locator('.island-tools .tool')).toHaveCount(10);
+  await expect(page.locator('.island-tools .tool')).toHaveCount(12);
 }
 
 async function openTool(page: Page, name: string) {
@@ -47,6 +47,29 @@ function oneSecondWav(): Buffer {
   return wav;
 }
 
+test('auto-hide keeps only a top handle, reveals on hover and expands on rest', async ({ page }) => {
+  await page.goto('/?settings=' + encodeURIComponent('{"island":true,"islandAutoHide":true,"autoHideDelayMs":300}'));
+  await expect(page.locator('.stage')).toHaveAttribute('data-island', 'true');
+
+  // idle: the capsule collapses into the thin top handle
+  const peek = page.locator('.island-peek');
+  await expect(peek).toBeVisible({ timeout: 3000 });
+  await expect(page.locator('.pill.island')).toHaveCount(0);
+
+  // pointing at the handle brings the capsule back, still closed
+  await page.locator('.stage').hover();
+  await expect(page.locator('.pill.island')).toBeVisible();
+  await expect(page.locator('.pill.island.island-open')).toHaveCount(0);
+
+  // resting on it opens the board
+  await expect(page.locator('.pill.island.island-open')).toBeVisible({ timeout: 2000 });
+  await expect(page.locator('.island-tools .tool')).toHaveCount(12);
+
+  // leaving closes and hides it again
+  await page.mouse.move(4, 700);
+  await expect(page.locator('.island-peek')).toBeVisible({ timeout: 4000 });
+});
+
 test('the island rail exposes every built-in plugin and imports a calendar', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -57,14 +80,16 @@ test('the island rail exposes every built-in plugin and imports a calendar', asy
   );
   expect(labels).toEqual([
     'Providers',
+    'Service status',
     'Calendar',
     'Mail',
-    'Sticky note',
+    'Sticky notes',
     'WeChat',
     'Completed tasks',
     'Recent sessions',
     'Music',
     'Focus timer',
+    'Desktop pet',
     'File drop',
   ]);
 
@@ -176,10 +201,10 @@ test('the idle island shows the chosen providers and plugin icons', async ({ pag
   await expect(page.locator('.idle-layer .island-tools')).toHaveCount(0);
 
   // Hovering morphs to the open board, where the plugin rail is a 5-column
-  // grid: ten plugins occupy two rows rather than one long strip.
+  // grid: twelve plugins occupy three rows rather than one long strip.
   await page.locator('.stage').hover();
   await expect(page.locator('.pill.island')).toHaveClass(/island-open/);
-  await expect(page.locator('.island-tools .tool')).toHaveCount(10);
+  await expect(page.locator('.island-tools .tool')).toHaveCount(12);
   const grid = await page.locator('.island-tools').evaluate((el) => {
     const style = getComputedStyle(el);
     return {
@@ -188,9 +213,10 @@ test('the idle island shows the chosen providers and plugin icons', async ({ pag
     };
   });
   expect(grid.columns).toBe(5);
-  expect(new Set(grid.rows.slice(0, 5)).size).toBe(1);
-  expect(new Set(grid.rows.slice(5)).size).toBe(1);
-  expect(grid.rows[5]).toBeGreaterThan(grid.rows[0]);
+  const rowTops = [...new Set(grid.rows)];
+  expect(rowTops).toHaveLength(3);
+  expect(rowTops[1]).toBeGreaterThan(rowTops[0]);
+  expect(rowTops[2]).toBeGreaterThan(rowTops[1]);
 });
 
 test('rapid hover in and out settles on the idle island without drifting', async ({ page }) => {
@@ -279,6 +305,28 @@ test('music matches an LRC file and makes the clicked line active', async ({ pag
 
   await page.locator('.island-panel .lyric', { hasText: 'Second line' }).click();
   await expect(page.locator('.island-panel .lyric.active')).toHaveText('Second line');
+});
+
+test('sticky notes keep several notes in a list and switch between them', async ({ page }) => {
+  await openIsland(page);
+  await openTool(page, 'Sticky notes');
+
+  const textarea = page.locator('.island-panel textarea.note');
+  await textarea.fill('first note');
+  await page.getByRole('button', { name: 'New note' }).click();
+  await textarea.fill('second note');
+
+  const cards = page.locator('.island-panel .note-pick');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0)).toContainText('second note');
+  await expect(cards.nth(1)).toContainText('first note');
+
+  await cards.nth(1).click();
+  await expect(textarea).toHaveValue('first note');
+
+  await page.getByRole('button', { name: 'Delete note 2' }).click();
+  await expect(cards).toHaveCount(1);
+  await expect(textarea).toHaveValue('second note');
 });
 
 test('the file drop station lists files saved through the browser fallback', async ({ page }) => {

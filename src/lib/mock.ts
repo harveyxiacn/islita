@@ -55,6 +55,7 @@ import { localDateInput } from './history';
 import { mergeSettings, type SettingsPatch } from './settings-writer';
 import { quotaKey } from './providers';
 import { shortcutProblem } from './shortcuts';
+import type { ServiceStatusReport } from './plugins/status';
 
 const now = Date.now();
 
@@ -64,6 +65,42 @@ const mockDropbox: DroppedFile[] = [];
 const iso = (ms: number) => new Date(ms).toISOString();
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
+
+/** Browser-preview status pages: Claude healthy, OpenAI in a minor incident. */
+const mockServiceStatus: ServiceStatusReport = {
+  fetchedAt: now,
+  services: [
+    {
+      id: 'claude',
+      name: 'Claude',
+      url: 'https://status.claude.com',
+      indicator: 'none',
+      description: 'All Systems Operational',
+      updatedAt: iso(now - 4 * 60_000),
+      incidents: [],
+      error: null,
+    },
+    {
+      id: 'openai',
+      name: 'OpenAI',
+      url: 'https://status.openai.com',
+      indicator: 'minor',
+      description: 'Partially degraded service',
+      updatedAt: iso(now - 2 * 60_000),
+      incidents: [
+        {
+          name: 'Elevated error rates on ChatGPT',
+          status: 'monitoring',
+          impact: 'minor',
+          shortlink: 'https://stspg.io/openai-chatgpt-errors',
+          createdAt: iso(now - 55 * 60_000),
+          updatedAt: iso(now - 2 * 60_000),
+        },
+      ],
+      error: null,
+    },
+  ],
+};
 
 /** Sample headers for the browser preview of the local-mail panel. */
 const mockMail: MailScan = {
@@ -192,6 +229,7 @@ export const mockSettings: Settings = {
   island: false,
   islandMargin: 12,
   islandIdle: { providers: [], plugins: [] },
+  islandAutoHide: false,
   autoHide: false,
   autoHideDelayMs: 800,
   popoverTimeoutSec: 10,
@@ -204,7 +242,7 @@ export const mockSettings: Settings = {
   ringStyle: 'ring',
   sidebarAnimations: true,
   showPercentLabel: true,
-  sidebarItems: { fiveHour: true, weekly: true, scoped: true, other: true, logo: true, percentLabel: true, moreButton: true },
+  sidebarItems: { fiveHour: true, weekly: true, scoped: true, other: true, logo: true, percentLabel: true, settingsButton: true, moreButton: true },
   refreshIntervalSec: 60,
   adaptiveRefresh: true,
   providers: {
@@ -1296,6 +1334,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     }
     case 'get_providers':
       return structuredClone(mockProviders) as T;
+    case 'service_status':
+      return structuredClone(mockServiceStatus) as T;
     case 'opencode_set_key': {
       const key = String(args?.key ?? '').trim();
       if (!key) throw new Error('the OpenCode API key is empty');

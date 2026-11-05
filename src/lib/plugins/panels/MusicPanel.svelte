@@ -8,17 +8,26 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { isTauri, pickMusicFolder, scanMusicFolder } from '$lib/api';
   import { t } from '$lib/i18n/i18n.svelte';
   import { activeLineAt } from '$lib/plugins/lrc';
   import { player } from '$lib/plugins/player.svelte';
   import { readPluginState, writePluginState } from '$lib/plugins/storage';
 
   let audioInput = $state<HTMLInputElement>();
+  let folderInput = $state<HTMLInputElement>();
   let lyricInput = $state<HTMLInputElement>();
   let lyricsBox = $state<HTMLElement | null>(null);
   let showPlaylist = $state(false);
   let lyricNotice = $state<'added' | 'empty' | 'none' | null>(null);
   let dragging = $state(false);
+  let folder = $state<string | null>(null);
+  let folderBusy = $state(false);
+  let folderError = $state<string | null>(null);
+  let folderNotice = $state<'loaded' | 'empty' | null>(null);
+  let folderAdded = $state(0);
+
+  const FOLDER_KEY = 'music.folder';
 
   const current = $derived(player.current);
   const lyrics = $derived(current?.lyrics ?? null);
@@ -38,8 +47,81 @@
   onMount(() => {
     const saved = readPluginState<'list' | 'hidden'>('music.playlist', 'hidden');
     showPlaylist = saved === 'list';
+    // Native folders are remembered; the browser fallback asks for the folder
+    // each session because it has no persistent path.
+    const savedFolder = readPluginState<string | null>(FOLDER_KEY, null);
+    if (isTauri() && typeof savedFolder === 'string' && savedFolder.trim()) {
+      folder = savedFolder;
+      void loadFolder(savedFolder, false, true);
+    }
     return () => writePluginState('music.playlist', showPlaylist ? 'list' : 'hidden');
   });
+
+  function basename(path: string): string {
+    return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+  }
+
+  /** Scan a native folder and append its files; asset URLs keep playing.
+   *  `quiet` is the remembered-folder restore: no notice and no forced
+   *  playlist expansion, so a panel that was closed stays closed. */
+  async function loadFolder(path: string, remember: boolean, quiet = false) {
+    folderBusy = true;
+    folderError = null;
+    try {
+      const scan = await scanMusicFolder(path);
+      const added = player.addFolderTracks(scan.tracks);
+      folder = scan.folder;
+      if (remember) writePluginState(FOLDER_KEY, scan.folder);
+      folderAdded = added;
+      if (!quiet) {
+        folderNotice = scan.tracks.length === 0 ? 'empty' : added > 0 ? 'loaded' : null;
+        if (added > 0) {
+          showPlaylist = true;
+          writePluginState('music.playlist', 'list');
+          setTimeout(() => (folderNotice = null), 3500);
+        }
+      }
+    } catch (error) {
+      folderError = String(error);
+    } finally {
+      folderBusy = false;
+    }
+  }
+
+  async function pickFolder() {
+    folderError = null;
+    folderNotice = null;
+    if (!isTauri()) {
+      folderInput?.click();
+      return;
+    }
+    try {
+      const picked = await pickMusicFolder();
+      if (picked) await loadFolder(picked, true);
+    } catch (error) {
+      folderError = String(error);
+    }
+  }
+
+  /** Browser fallback: `<input webkitdirectory>` gives us File objects. */
+  async function onFolderPicked(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (files.length === 0) return;
+    folderError = null;
+    const added = player.addFiles(files);
+    await player.addLyricsFiles(files);
+    if (added > 0) {
+      showPlaylist = true;
+      writePluginState('music.playlist', 'list');
+      folderAdded = added;
+      folderNotice = 'loaded';
+      setTimeout(() => (folderNotice = null), 3500);
+    } else {
+      folderNotice = 'empty';
+    }
+  }
 
   // Keep the active lyric visible without yanking the whole island around.
   $effect(() => {
@@ -105,11 +187,12 @@
     <div class="heading">
       <strong>{t('plugin.music')}</strong>
       {#if current}
-        <span class="now" title={current.fileName}>{t('plugin.music.local')}</span>
+        <span class="now" title={folder ?? current.fileName}>{folder ? basename(folder) : t('plugin.music.local')}</span>
       {/if}
     </div>
     <div class="head-actions">
       {#if current}
+        <button class="link" onclick={pickFolder} disabled={folderBusy}>{t('plugin.music.folder')}</button>
         <button class="link" onclick={pickLyrics}>{t('plugin.music.lyrics')}</button>
         <button class="link" onclick={pickAudio}>{t('plugin.music.add')}</button>
         <button
@@ -146,6 +229,12 @@
       <span>{t('plugin.music.choose')}</span>
       <small>{t('plugin.music.choose.hint')}</small>
     </button>
+    <div class="folder-pick">
+      <button class="link" onclick={pickFolder} disabled={folderBusy}>
+        {folderBusy ? t('plugin.music.folder.loading') : t('plugin.music.folder.choose')}
+      </button>
+      <small>{t('plugin.music.folder.hint')}</small>
+    </div>
     <input class="hidden" type="file" accept="audio/*,.mp3,.m4a,.flac,.wav,.ogg,.opus" multiple bind:this={audioInput} onchange={onAudioPicked} />
   {:else}
     <div class="track-line">
@@ -221,14 +310,6 @@
       </span>
     </div>
 
-    {#if player.error}
-      <p class="notice bad" role="alert">{t('plugin.music.error')}</p>
-    {:else if lyricNotice === 'added'}
-      <p class="notice" role="status">{t('plugin.music.lyrics.added')}</p>
-    {:else if lyricNotice === 'empty'}
-      <p class="notice bad" role="status">{t('plugin.music.lyrics.unreadable')}</p>
-    {/if}
-
     {#if showPlaylist}
       <ul class="playlist">
         {#each player.tracks as track, index (track.id)}
@@ -249,7 +330,23 @@
 
     <input class="hidden" type="file" accept="audio/*,.mp3,.m4a,.flac,.wav,.ogg,.opus" multiple bind:this={audioInput} onchange={onAudioPicked} />
   {/if}
+
+  {#if folderError}
+    <p class="notice bad" role="alert">{t('plugin.music.folder.error', { message: folderError })}</p>
+  {:else if folderNotice === 'empty'}
+    <p class="notice" role="status">{t('plugin.music.folder.empty')}</p>
+  {:else if folderNotice === 'loaded'}
+    <p class="notice" role="status">{t('plugin.music.folder.loaded', { count: String(folderAdded) })}</p>
+  {:else if player.error}
+    <p class="notice bad" role="alert">{t('plugin.music.error')}</p>
+  {:else if lyricNotice === 'added'}
+    <p class="notice" role="status">{t('plugin.music.lyrics.added')}</p>
+  {:else if lyricNotice === 'empty'}
+    <p class="notice bad" role="status">{t('plugin.music.lyrics.unreadable')}</p>
+  {/if}
+
   <input class="hidden" type="file" accept=".lrc,text/plain" multiple bind:this={lyricInput} onchange={onLyricsPicked} />
+  <input class="hidden" type="file" webkitdirectory multiple bind:this={folderInput} onchange={onFolderPicked} />
 </div>
 
 <style>
@@ -345,6 +442,20 @@
 
   .dropzone small {
     font-size: 0.625rem;
+    color: var(--faint);
+  }
+
+  .folder-pick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.125rem;
+    padding-top: 0.125rem;
+    text-align: center;
+  }
+
+  .folder-pick small {
+    font-size: 0.5938rem;
     color: var(--faint);
   }
 

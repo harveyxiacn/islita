@@ -28,6 +28,7 @@ export const defaultSidebarItems: SidebarItems = {
   other: true,
   logo: true,
   percentLabel: true,
+  settingsButton: true,
   moreButton: true,
 };
 
@@ -79,29 +80,29 @@ function nonScopedWindows(windows: QuotaWindow[]): QuotaWindow[] {
 
 /**
  * Arcs of a concentric group, outer → inner:
- *   outer  = the account-wide weekly window
- *   inner  = the account-wide 5-hour window, omitted when the plan has none
- *            (Codex Pro / prolite only get the weekly window)
- *   third  = the first *per-model* scoped weekly window, Claude only and only
- *            when `sidebarItems.scoped` is on. Codex' scoped windows are
- *            per-feature additional limits, not a slice of the account limit,
- *            so stacking them inside the same group would be misleading — they
- *            stay in the popover's "More limits" section.
- * If the provider reports neither a weekly nor a 5-hour window (e.g. only
- * `other`-kind windows) the group falls back to the account-wide windows with
- * the primary one outermost, so something sensible is still drawn.
+ *   account-wide windows, broadest first (weekly → 5-hour for Claude/Codex;
+ *   30-day → weekly → 5-hour for OpenCode Go), then the innermost per-model
+ *   weekly window (Claude only and only when `sidebarItems.scoped` is on).
+ *   Codex' scoped windows are per-feature additional limits, not a slice of
+ *   the account limit, so stacking them inside the same group would be
+ *   misleading — they stay in the popover's "More limits" section.
+ * If the provider only reports other kinds (e.g. a Zen budget), they still
+ * appear in length order, so something sensible is always drawn.
  *
  * `visible` is already filtered, so a hidden kind simply is not there.
  */
 function concentricArcs(quota: ProviderQuota, visible: QuotaWindow[], items: SidebarItems): QuotaWindow[] {
-  const nonScoped = nonScopedWindows(visible);
-  const weekly = nonScoped.find((w) => w.kind === 'seven_day');
-  const fiveHour = nonScoped.find((w) => w.kind === 'five_hour');
-
-  const out: QuotaWindow[] = [];
-  if (weekly) out.push(weekly);
-  if (fiveHour) out.push(fiveHour);
-  if (out.length === 0) out.push(...nonScoped.slice(0, 2));
+  // Longest window outermost: Claude/Codex put weekly outside 5-hour, and
+  // OpenCode Go adds its 30-day allowance outside both. Sorting by the
+  // advertised window length keeps the hierarchy right without a provider
+  // table; `null` lengths (budgets) sort innermost. Older snapshots (and the
+  // unit fixtures) omit the length, so the kind supplies the usual value.
+  const broadness = (w: QuotaWindow): number =>
+    w.windowSeconds ??
+    (w.kind === 'seven_day' ? 7 * 86_400 : w.kind === 'five_hour' ? 5 * 3_600 : -1);
+  const out = visible
+    .filter((w) => w.scope == null)
+    .sort((a, b) => broadness(b) - broadness(a));
 
   if (items.scoped && quota.provider !== 'codex') {
     const scoped = visible.find((w) => w.scope != null && w.kind === 'seven_day');

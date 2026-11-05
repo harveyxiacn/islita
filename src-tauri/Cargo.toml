@@ -1,6 +1,6 @@
 [package]
 name = "islita"
-version = "0.7.0"
+version = "0.8.0"
 description = "Plugin island for the desktop: Claude Code / Codex quotas, mail, calendar, notes, file drop, music and tasks"
 authors = ["Harvey Xia"]
 license = "MIT"
@@ -23,7 +23,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools", "image-png", "macos-private-api", "tray-icon"] }
+tauri = { version = "2", features = ["devtools", "image-png", "macos-private-api", "protocol-asset", "tray-icon"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

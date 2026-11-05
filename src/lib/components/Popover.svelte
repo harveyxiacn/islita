@@ -42,6 +42,10 @@
     pinned?: boolean;
     /** automatic polling is paused (Settings.pollingPaused): say so in the footer */
     paused?: boolean;
+    /** one line the desktop pet says about this provider, from its chosen voice */
+    petLine?: string | null;
+    /** the pet's expression card; decorative, the line carries the meaning */
+    petAvatar?: string | null;
     onDetails?: () => void;
     onClose?: () => void;
   }
@@ -57,6 +61,8 @@
     history = [],
     pinned = false,
     paused = false,
+    petLine = null,
+    petAvatar = null,
     onDetails,
     onClose,
   }: Props = $props();
@@ -210,6 +216,15 @@
 
     {#if statusHint}
       <p class="status" class:bad={quota.status === 'error'}>{statusHint}</p>
+    {/if}
+
+    {#if petLine}
+      <div class="pet-line">
+        {#if petAvatar}
+          <img class="pet-ava" src={petAvatar} alt="" width="28" height="28" draggable="false" />
+        {/if}
+        <p class="pet-text"><span class="sr-only">{t('popover.petSays')} </span>{petLine}</p>
+      </div>
     {/if}
 
     <footer>
@@ -453,6 +468,32 @@
   .empty {
     margin: 0;
     font-size: 0.8125rem;
+    color: var(--muted);
+  }
+
+  /* the pet's aside: quiet, image-first, never competes with a quota row */
+  .pet-line {
+    display: flex;
+    align-items: center;
+    gap: 0.4375rem;
+    padding: 0.3125rem 0.4375rem 0.3125rem 0.25rem;
+    border-radius: 0.625rem;
+    background: var(--hover);
+  }
+
+  .pet-ava {
+    flex: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    object-fit: cover;
+    user-select: none;
+  }
+
+  .pet-text {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.35;
     color: var(--muted);
   }
 

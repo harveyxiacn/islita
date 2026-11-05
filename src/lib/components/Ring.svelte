@@ -34,8 +34,8 @@
   the "at this pace, here at the reset" angle (see forecast.ts), plus a
   translucent dashed arc from the current value to that angle. It is opt-in
   per arc so a low-confidence guess never marks up a 56px ring. When the
-  projection reaches 100 % a small hourglass badge ("will run out") sits on the
-  ring's 11 o'clock edge.
+  projection reaches 100 % an amber hourglass ("forecast: will run out") sits
+  on the ring's 11 o'clock edge — a warning, not a provider status.
 
   An arc may carry a one-shot `fx` ('warn' | 'critical' | 'reset'); changing
   `fxId` replays it: an outward ~600 ms pulse ring for a threshold crossing, a
@@ -132,15 +132,20 @@
   );
   const centerPercent = $derived(text.center != null);
   /**
-   * Three regular arcs can leave no room at the minimum 40px ring size. In
-   * centre-percent mode reserve a readable inner disc and tighten only the
-   * painted arc geometry. The outer size never changes, so bar layout stays
-   * stable when the user switches positions.
+   * Three regular arcs can leave no room at the minimum 40px ring size: the
+   * innermost stroke would sit behind the logo (or the centre percent). In
+   * either case reserve a readable inner disc and tighten only the painted arc
+   * geometry — three arcs without a centre percent still need room for the
+   * provider logo. The outer size never changes, so bar layout stays stable
+   * when the user switches positions or a provider starts reporting a third
+   * window (OpenCode Go's 30-day allowance). At the default 56px ring the
+   * configured stroke already fits, so the computed value is unchanged.
    */
+  const needsInnerRoom = $derived(centerPercent || arcs.length >= 3);
   const effectiveGap = $derived(centerPercent && arcs.length > 1 ? Math.min(gap, 1) : gap);
   const sw = $derived.by(() => {
-    if (!centerPercent || arcs.length === 0) return configuredSw;
-    const targetInnerRadius = Math.max(10, dim * 0.25);
+    if (!needsInnerRoom || arcs.length === 0) return configuredSw;
+    const targetInnerRadius = centerPercent ? Math.max(10, dim * 0.25) : Math.max(4.5, dim * 0.08);
     const maxStroke = (dim / 2 - targetInnerRadius - (arcs.length - 1) * effectiveGap - 1) / arcs.length;
     return Math.min(configuredSw, Math.max(2.3, maxStroke));
   });

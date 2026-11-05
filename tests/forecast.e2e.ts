@@ -54,6 +54,16 @@ test('the forecast wording follows percentMode and the overview repeats it', asy
   await expect(row(page, '5-hour').locator('.forecast')).toHaveText(/^Runs out in ~\d+ min$/);
 });
 
+test('the ring hourglass is labelled as a forecast, never as a provider status', async ({ page }) => {
+  await page.goto('/');
+  // The mock Claude 5-hour window is projected above 100 %, so the ring draws
+  // the outlined hourglass. Its tooltip must say "Forecast:" — the filled
+  // status badges are the only indicators that mean signed out / rate-limited.
+  const badge = page.locator('.runout').first();
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveAttribute('title', /^Forecast: /);
+});
+
 test('the predictive notification toggle follows the notifications setting', async ({ page }) => {
   await page.goto('/dashboard');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();

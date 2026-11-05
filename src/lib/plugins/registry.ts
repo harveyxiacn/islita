@@ -9,8 +9,10 @@ import DropPanel from './panels/DropPanel.svelte';
 import MailPanel from './panels/MailPanel.svelte';
 import MusicPanel from './panels/MusicPanel.svelte';
 import NotesPanel from './panels/NotesPanel.svelte';
+import PetPanel from './panels/PetPanel.svelte';
 import ProvidersPanel from './panels/ProvidersPanel.svelte';
 import SessionsPanel from './panels/SessionsPanel.svelte';
+import StatusPanel from './panels/StatusPanel.svelte';
 import TasksPanel from './panels/TasksPanel.svelte';
 import TimerPanel from './panels/TimerPanel.svelte';
 import WechatPanel from './panels/WechatPanel.svelte';
@@ -24,6 +26,15 @@ const REGISTERED: IslandPlugin[] = [
     icon: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 4v6M9 14v6',
     order: 0,
     component: ProvidersPanel,
+  },
+  {
+    id: 'status',
+    label: 'plugin.status',
+    hint: 'plugin.status.hint',
+    // heartbeat line
+    icon: 'M3 12h4l2-5 4 10 2-5h6',
+    order: 5,
+    component: StatusPanel,
   },
   {
     id: 'calendar',
@@ -96,6 +107,15 @@ const REGISTERED: IslandPlugin[] = [
     icon: 'M12 8v5l3 2M9 2h6M12 4a8 8 0 1 0 8 8',
     order: 20,
     component: TimerPanel,
+  },
+  {
+    id: 'pet',
+    label: 'plugin.pet',
+    hint: 'plugin.pet.hint',
+    // paw print
+    icon: 'M12 13c-2.5 0-4 2-4 3.5S9.5 20 12 20s4-1 4-3.5S14.5 13 12 13ZM6 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM10 7a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM14 7a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM18 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z',
+    order: 22,
+    component: PetPanel,
   },
   {
     id: 'drop',

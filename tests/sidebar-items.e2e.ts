@@ -28,6 +28,8 @@ test('by default the bar shows both providers with logo, percent and the ⋯ but
   await expect(page.locator('.pct')).toHaveCount(2);
   await expect(logos(page)).toHaveCount(2);
   await expect(page.locator('.dots')).toHaveCount(1);
+  // the gear is the one-click way into the dashboard's Settings tab
+  await expect(page.getByRole('button', { name: 'Open settings', exact: true })).toHaveCount(1);
   // three concentric arcs for Claude: weekly, 5-hour, per-model weekly
   await expect(page.getByRole('button', { name: /^Claude:/ })).toHaveAttribute(
     'aria-label',
@@ -49,6 +51,12 @@ test('each element toggle removes exactly its own part of the bar', async ({ pag
   await openBar(page, { sidebarItems: { moreButton: false } });
   await expect(page.locator('.slot')).toHaveCount(2);
   await expect(page.locator('.dots')).toHaveCount(0);
+  // the gear is independent of the "⋯" switch
+  await expect(page.locator('.gear')).toHaveCount(1);
+
+  await openBar(page, { sidebarItems: { settingsButton: false } });
+  await expect(page.locator('.gear')).toHaveCount(0);
+  await expect(page.locator('.dots')).toHaveCount(1);
 });
 
 test('the centre percentage replaces the provider logo and respects the percent toggle', async ({ page }) => {

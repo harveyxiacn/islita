@@ -459,6 +459,8 @@ pub fn setup(app: &AppHandle) -> anyhow::Result<()> {
                         anchor_y: 52.0,
                         anchor_x: Some(52.0),
                         window_kind: None,
+                        pet_line: None,
+                        pet_avatar: None,
                     },
                 );
                 popover::set_pinned(&handle, true);
