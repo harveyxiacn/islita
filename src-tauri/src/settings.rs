@@ -1053,6 +1053,37 @@ mod tests {
     }
 
     #[test]
+    fn percent_window_defaults_for_old_files_and_round_trips() {
+        use crate::model::PercentWindow;
+        let base = Settings::default();
+        assert_eq!(base.percent_window, PercentWindow::Auto);
+
+        let old = merge(&base, &json!({"percentMode": "remaining"}));
+        assert_eq!(old.percent_window, PercentWindow::Auto);
+
+        let invalid = merge(&base, &json!({"percentWindow": "monthly"}));
+        assert_eq!(invalid.percent_window, PercentWindow::Auto);
+
+        for (wire, expected) in [
+            ("auto", PercentWindow::Auto),
+            ("five_hour", PercentWindow::FiveHour),
+            ("seven_day", PercentWindow::SevenDay),
+            ("thirty_day", PercentWindow::ThirtyDay),
+        ] {
+            let merged = merge(&base, &json!({"percentWindow": wire}));
+            assert_eq!(merged.percent_window, expected);
+            let value = serde_json::to_value(&merged).unwrap();
+            assert_eq!(value["percentWindow"], wire);
+            assert_eq!(
+                serde_json::from_value::<Settings>(value)
+                    .unwrap()
+                    .percent_window,
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn tray_display_defaults_to_icon_and_ignores_unknown_values() {
         let base = Settings::default();
         assert_eq!(base.tray_display, crate::model::TrayDisplay::Icon);

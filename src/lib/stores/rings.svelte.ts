@@ -118,7 +118,7 @@ export function buildRingItems(snap: AppSnapshot | null, s: Settings): RingItem[
           `${quotaKey(quota)}:group`,
           arcs,
           (depth) => rampFor(quota.provider, depth),
-          labelWindowOf(arcs)
+          labelWindowOf(arcs, s.percentWindow)
         );
       }
       continue;

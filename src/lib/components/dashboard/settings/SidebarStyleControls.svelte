@@ -6,7 +6,6 @@
   `<SidebarStyleControls />` and nothing else. It reads and patches the shared
   settings store itself.
 
-    labelContent      percentage | reset countdown | both
     ringStyle         rings | compact bars
     sidebarAnimations pulse on threshold crossings, flash on resets
 -->
@@ -15,9 +14,8 @@
   import Toggle from '../Toggle.svelte';
   import { t, tDyn } from '$lib/i18n/i18n.svelte';
   import { settings } from '$lib/stores/settings.svelte';
-  import type { LabelContent, RingStyle } from '$lib/types';
+  import type { RingStyle } from '$lib/types';
 
-  const LABEL_CONTENTS: LabelContent[] = ['percent', 'reset', 'both'];
   const RING_STYLES: RingStyle[] = ['ring', 'bar'];
 
   const s = $derived(settings.value);
@@ -31,18 +29,6 @@
     onchange={(e) => void settings.patch({ ringStyle: e.currentTarget.value as RingStyle })}
   >
     {#each RING_STYLES as v (v)}<option value={v}>{tDyn(`settings.ringStyle.${v}`)}</option>{/each}
-  </select>
-</Field>
-
-<Field label={t('settings.labelContent')} hint={t('settings.labelContent.hint')}>
-  <select
-    aria-label={t('settings.labelContent')}
-    class="field"
-    value={s.labelContent}
-    disabled={!s.sidebarItems.percentLabel}
-    onchange={(e) => void settings.patch({ labelContent: e.currentTarget.value as LabelContent })}
-  >
-    {#each LABEL_CONTENTS as v (v)}<option value={v}>{tDyn(`settings.labelContent.${v}`)}</option>{/each}
   </select>
 </Field>
 

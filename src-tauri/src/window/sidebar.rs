@@ -2,7 +2,7 @@
 //! watchdog. [PLATFORM]
 
 use crate::model::{events, windows, SidebarState};
-use crate::window::{self, monitors, monitors::LogicalRect};
+use crate::window::{self, monitors, monitors::IslandPlacement, monitors::LogicalRect};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -10,11 +10,31 @@ use tauri::{AppHandle, Emitter, Manager};
 pub fn desired_rect(app: &AppHandle, expanded: bool) -> Option<(LogicalRect, f64)> {
     let settings = window::settings_of(app);
     let mon = monitors::target_monitor(app, &settings)?;
-    let (content_w, content_h) = window::snapshot(app)?.sidebar_content;
+    let state = window::snapshot(app)?;
+    // `apply_settings` clears the flag when the mode is switched off; checking
+    // here as well keeps a settings-file edit from landing on a stale state.
+    let hidden = state.island_hidden && settings.island && settings.island_auto_hide;
+    let (content_w, content_h) = if hidden {
+        state.sidebar_peek
+    } else {
+        state.sidebar_content
+    };
+    let placement = if hidden {
+        IslandPlacement::Peek
+    } else {
+        IslandPlacement::Visible
+    };
     Some((
-        monitors::sidebar_rect(&mon, &settings, content_w, content_h, expanded),
+        monitors::sidebar_rect_with(&mon, &settings, content_w, content_h, expanded, placement),
         mon.scale,
     ))
+}
+
+/// A relayout reports the DOM content box of the state on screen. While the
+/// island is hidden that box is the peek handle; storing it would make the
+/// next reveal restore the wrong capsule size.
+fn remembers_content(expanded: bool, island_hidden: bool) -> bool {
+    expanded && !island_hidden
 }
 
 /// The rect the bar currently occupies according to our own bookkeeping — the
@@ -78,7 +98,7 @@ pub fn relayout(app: &AppHandle, width: f64, height: f64) {
     window::with_state(app, |inner| {
         // A collapsed handle is not the expanded content. Remember the latter
         // so expansion restores its width before the webview's next layout.
-        if inner.expanded {
+        if remembers_content(inner.expanded, inner.island_hidden) {
             inner.sidebar_content = (width, height);
         }
     });
@@ -86,6 +106,44 @@ pub fn relayout(app: &AppHandle, width: f64, height: f64) {
     // A popover that is open keeps hugging the (possibly moved) bar.
     super::popover::reposition(app);
     reveal(app);
+}
+
+/// `sidebar_set_island_hidden`: swap the window between the capsule and the
+/// thin handle docked to the top work-area edge that it auto-hides into.
+pub fn set_island_hidden(app: &AppHandle, hidden: bool, width: f64, height: f64) {
+    if !(width.is_finite() && height.is_finite()) || width <= 0.0 || height <= 0.0 {
+        log::warn!("sidebar_set_island_hidden ignored: {width}x{height}");
+        return;
+    }
+    let settings = window::settings_of(app);
+    if !settings.island || (hidden && !settings.island_auto_hide) {
+        log::debug!(
+            "sidebar_set_island_hidden({hidden}) ignored: island={} autoHide={}",
+            settings.island,
+            settings.island_auto_hide
+        );
+        return;
+    }
+    window::with_state(app, |inner| {
+        inner.island_hidden = hidden;
+        // Each state reports the box it is about to occupy: the peek is what
+        // the next hide restores, the capsule what the next reveal restores.
+        if hidden {
+            inner.sidebar_peek = (width, height);
+        } else {
+            inner.sidebar_content = (width, height);
+        }
+    });
+    place(app);
+    super::popover::reposition(app);
+    log::debug!(
+        "island {}",
+        if hidden {
+            "hidden at the screen edge"
+        } else {
+            "revealed"
+        }
+    );
 }
 
 /// Show the bar once, the first time we have a layout (or after the fallback
@@ -404,6 +462,14 @@ mod tests {
         assert!(!watch.needs_remap(&seen, earlier));
         assert!(!watch.needs_remap(&seen, earlier + Duration::from_secs(5)));
         assert!(watch.needs_remap(&seen, earlier + Duration::from_secs(35)));
+    }
+
+    #[test]
+    fn relayout_never_stores_the_peek_as_capsule_content() {
+        assert!(remembers_content(true, false));
+        assert!(!remembers_content(true, true));
+        assert!(!remembers_content(false, false));
+        assert!(!remembers_content(false, true));
     }
 
     #[test]

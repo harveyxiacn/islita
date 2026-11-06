@@ -240,6 +240,7 @@ export const mockSettings: Settings = {
   ringMode: 'concentric',
   showScopedRing: true,
   percentMode: 'used',
+  percentWindow: 'auto',
   percentPosition: 'below',
   labelContent: 'percent',
   ringStyle: 'ring',
@@ -1375,6 +1376,10 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return undefined as T;
     case 'sidebar_set_expanded':
       mockEmit('sidebar-state', { expanded: Boolean(args?.expanded), pinned: false });
+      return undefined as T;
+    // No native window in the browser mock: the island keeps its DOM size.
+    case 'sidebar_set_island_hidden':
+    case 'sidebar_relayout':
       return undefined as T;
     case 'open_dashboard':
       mockEmit('dashboard-navigate', { tab: args?.tab ?? 'overview' });

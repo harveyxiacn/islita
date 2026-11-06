@@ -56,6 +56,17 @@ test('auto-hide keeps only a top handle, reveals on hover and expands on rest', 
   await expect(peek).toBeVisible({ timeout: 3000 });
   await expect(page.locator('.pill.island')).toHaveCount(0);
 
+  // The stage is exactly the peek box the native window is docked to, flush
+  // with the top edge (no island margin), and stays a keyboard target.
+  const box = await page.locator('.stage').evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top) };
+  });
+  expect(box).toEqual({ w: 96, h: 24, top: 0 });
+  expect(await peek.evaluate((el) => getComputedStyle(el).marginTop)).toBe('0px');
+  await expect(page.locator('.stage')).toHaveAttribute('tabindex', '0');
+  await expect(page.locator('.stage')).toHaveAttribute('aria-label', 'Show the island');
+
   // pointing at the handle brings the capsule back, still closed
   await page.locator('.stage').hover();
   await expect(page.locator('.pill.island')).toBeVisible();

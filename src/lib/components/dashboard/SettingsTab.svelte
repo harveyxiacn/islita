@@ -9,7 +9,7 @@
   data. A card hides itself when the search matches none of its controls.
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, type Component } from 'svelte';
   import AboutCard from './settings/AboutCard.svelte';
   import AccountsCard from './settings/AccountsCard.svelte';
   import AppearanceCard from './settings/AppearanceCard.svelte';
@@ -29,14 +29,37 @@
   import UpdatesCard from './settings/UpdatesCard.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
   import { resetAllPatch } from '$lib/settings-cards';
-  import { SECTIONS } from '$lib/settings-sections';
+  import { SECTIONS, SETTINGS_GROUPS, type SectionId, type SettingsGroup } from '$lib/settings-sections';
   import { SettingsSearch, provideSettingsSearch } from '$lib/settings-scope.svelte';
   import { defaultSettings, settings } from '$lib/stores/settings.svelte';
+
+  /** One component per section id; TypeScript fails if a section is missed. */
+  const CARDS: Record<SectionId, Component> = {
+    appearance: AppearanceCard,
+    sidebarItems: SidebarItemsCard,
+    presets: PresetsCard,
+    sizeColour: SizeColourCard,
+    position: PositionCard,
+    behaviour: BehaviourCard,
+    plugins: PluginsCard,
+    shortcuts: ShortcutsCard,
+    providers: ProvidersCard,
+    data: DataCard,
+    accounts: AccountsCard,
+    notifications: NotificationsCard,
+    integrations: IntegrationsPanel,
+    updates: UpdatesCard,
+    privacy: PrivacyCard,
+    about: AboutCard,
+    backup: BackupCard,
+  };
 
   const search = new SettingsSearch();
   provideSettingsSearch(search);
 
   const shown = $derived(SECTIONS.filter((section) => !search.active || search.cards.get(section.id) !== false));
+  const shownIds = $derived(new Set<string>(shown.map((section) => section.id)));
+  const groupShown = (group: SettingsGroup) => group.sections.some((section) => shownIds.has(section.id));
 
   let root = $state<HTMLElement | null>(null);
   let current = $state<string>(SECTIONS[0].id);
@@ -110,15 +133,21 @@
 
     <nav aria-label={t('settings.nav')}>
       <ul class="index">
-        {#each shown as section (section.id)}
-          <li>
-            <a
-              href={`#${section.id}`}
-              class:current={current === section.id}
-              aria-current={current === section.id ? 'location' : undefined}
-              onclick={(e) => { e.preventDefault(); jump(section.id); }}
-            >{t(section.title)}</a>
-          </li>
+        {#each SETTINGS_GROUPS as group (group.id)}
+          {@const sections = group.sections.filter((section) => shownIds.has(section.id))}
+          {#if sections.length > 0}
+            <li class="nav-group">{t(group.title)}</li>
+            {#each sections as section (section.id)}
+              <li>
+                <a
+                  href={`#${section.id}`}
+                  class:current={current === section.id}
+                  aria-current={current === section.id ? 'location' : undefined}
+                  onclick={(e) => { e.preventDefault(); jump(section.id); }}
+                >{t(section.title)}</a>
+              </li>
+            {/each}
+          {/if}
         {/each}
       </ul>
       <select
@@ -127,7 +156,14 @@
         value={current}
         onchange={(e) => jump(e.currentTarget.value)}
       >
-        {#each shown as section (section.id)}<option value={section.id}>{t(section.title)}</option>{/each}
+        {#each SETTINGS_GROUPS as group (group.id)}
+          {@const sections = group.sections.filter((section) => shownIds.has(section.id))}
+          {#if sections.length > 0}
+            <optgroup label={t(group.title)}>
+              {#each sections as section (section.id)}<option value={section.id}>{t(section.title)}</option>{/each}
+            </optgroup>
+          {/if}
+        {/each}
       </select>
     </nav>
 
@@ -145,23 +181,22 @@
       <p class="empty muted" role="status">{t('settings.search.none', { query: search.query.trim() })}</p>
     {/if}
 
-    <AppearanceCard />
-    <PresetsCard />
-    <SidebarItemsCard />
-    <SizeColourCard />
-    <PositionCard />
-    <BehaviourCard />
-    <PluginsCard />
-    <NotificationsCard />
-    <ShortcutsCard />
-    <ProvidersCard />
-    <AccountsCard />
-    <DataCard />
-    <IntegrationsPanel />
-    <UpdatesCard />
-    <PrivacyCard />
-    <BackupCard />
-    <AboutCard />
+    {#each SETTINGS_GROUPS as group (group.id)}
+      <section
+        class="group-block"
+        data-settings-group={group.id}
+        hidden={!groupShown(group)}
+        aria-labelledby={`settings-group-${group.id}`}
+      >
+        <h2 class="group-title" id={`settings-group-${group.id}`}>{t(group.title)}</h2>
+        <div class="group-grid">
+          {#each group.sections as section (section.id)}
+            {@const Card = CARDS[section.id]}
+            <Card />
+          {/each}
+        </div>
+      </section>
+    {/each}
 
     <!-- on a narrow window the rail is only the search box and the select -->
     <button class="btn reset-all-end" onclick={resetAll}>{t('settings.resetAll')}</button>
@@ -217,6 +252,20 @@
     gap: 0.0625rem;
   }
 
+  .nav-group {
+    margin: 0.5rem 0 0.0625rem;
+    padding: 0 0.625rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  .nav-group:first-child {
+    margin-top: 0;
+  }
+
   .index a {
     display: block;
     padding: 0.3125rem 0.625rem;
@@ -257,17 +306,48 @@
   }
 
   .cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-width: 0;
+    /* the group grids collapse by their own width, not the viewport's, so UI
+       scale and the rail width cannot leave them too narrow */
+    container-type: inline-size;
+  }
+
+  .group-block {
+    min-width: 0;
+  }
+
+  .group-block[hidden] {
+    display: none;
+  }
+
+  .group-title {
+    margin: 0 0 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .group-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
     gap: 1rem;
     min-width: 0;
   }
 
-  .cards > :global(.err),
+  @container (max-width: 52rem) {
+    .group-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   .cards > .save-state,
   .cards > .empty {
-    grid-column: 1 / -1;
     margin: 0;
   }
 

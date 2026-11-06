@@ -147,6 +147,11 @@ export type VerticalAlign = 'top' | 'center' | 'bottom';
 /** concentric: one ring group per provider (outer weekly, inner 5-hour, optional 3rd scoped ring); primary: single ring; all: one ring per window */
 export type RingMode = 'concentric' | 'primary' | 'all';
 export type PercentMode = 'used' | 'remaining';
+/**
+ * Which account-wide quota window the single percentage under a ring refers
+ * to. `auto` keeps the primary window (the tightest one for OpenCode Go).
+ */
+export type PercentWindow = 'auto' | 'five_hour' | 'seven_day' | 'thirty_day';
 /** What the tray icon shows: only the glyph, or the busiest window's percentage too. */
 export type TrayDisplay = 'icon' | 'percent';
 /** Whether a ring's percentage sits below it or replaces its centre logo. */
@@ -296,6 +301,11 @@ export interface Settings {
   /** @deprecated mirror of `sidebarItems.scoped`, kept so old settings files load */
   showScopedRing: boolean;
   percentMode: PercentMode;
+  /**
+   * Which limit the single percentage describes. Only account-wide windows
+   * qualify; a provider without the chosen limit falls back to its primary.
+   */
+  percentWindow: PercentWindow;
   /** `below` preserves the original label; `center` replaces the provider logo. */
   percentPosition: PercentPosition;
   /** `percent` (default), `reset` countdown or `both`; centre position always shows the percent */

@@ -300,6 +300,19 @@ pub enum PercentMode {
     Remaining,
 }
 
+/// Which account-wide quota window the single percentage under a ring (and
+/// the island summary) describes. `Auto` keeps the primary window, which is
+/// the tightest one for OpenCode Go.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PercentWindow {
+    #[default]
+    Auto,
+    FiveHour,
+    SevenDay,
+    ThirtyDay,
+}
+
 /// Where the percentage label is rendered for each ring in the sidebar.
 /// `Below` preserves the original layout; `Center` uses the ring's center.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -644,6 +657,10 @@ pub struct Settings {
     /// hand-written settings files keep working).
     pub show_scoped_ring: bool,
     pub percent_mode: PercentMode,
+    /// Which account-wide window the single percentage describes. A provider
+    /// without the chosen window falls back to its primary one.
+    #[serde(default)]
+    pub percent_window: PercentWindow,
     /// Render the percentage below the ring (legacy layout) or in its center.
     #[serde(default)]
     pub percent_position: PercentPosition,
@@ -795,6 +812,7 @@ impl Default for Settings {
             ring_mode: RingMode::Concentric,
             show_scoped_ring: true,
             percent_mode: PercentMode::Used,
+            percent_window: PercentWindow::Auto,
             percent_position: PercentPosition::default(),
             label_content: LabelContent::default(),
             ring_style: RingStyle::default(),

@@ -13,6 +13,7 @@
 import { severityOf, worstSeverity, type Severity } from './severity';
 import type {
   AppSnapshot,
+  PercentWindow,
   ProviderId,
   ProviderQuota,
   QuotaWindow,
@@ -135,16 +136,51 @@ export function barGroups(quota: ProviderQuota, s: Settings): QuotaWindow[][] {
     return arcs.length > 0 ? [arcs] : [[]];
   }
   const ordered = nonScopedWindows(visible);
-  const rings = s.ringMode === 'all' ? ordered : ordered.slice(0, 1);
-  return rings.length > 0 ? rings.map((w) => [w]) : [[]];
+  if (s.ringMode === 'all') return ordered.length > 0 ? ordered.map((w) => [w]) : [[]];
+  // "primary" draws the window the label describes, so the arc and its
+  // percentage can never disagree. `auto` keeps the old primary-first choice.
+  const chosen = windowForPercent(ordered, s.percentWindow);
+  return chosen ? [[chosen]] : [[]];
+}
+
+/** Does `w` satisfy the user's `percentWindow` preference? */
+export function matchesPercentWindow(w: QuotaWindow, preferred: PercentWindow): boolean {
+  switch (preferred) {
+    case 'five_hour':
+      return w.kind === 'five_hour';
+    case 'seven_day':
+      return w.kind === 'seven_day';
+    case 'thirty_day':
+      // `other` also covers budget windows; only a real ~30-day allowance
+      // (OpenCode Go) qualifies.
+      return w.kind === 'other' && (w.windowSeconds ?? 0) >= 28 * 86_400;
+    default:
+      return true;
+  }
 }
 
 /**
- * Window the percent label of a group refers to: its primary window, falling
- * back to the first *visible* one when the primary is hidden or absent.
+ * Window a single percentage describes: the requested account-wide kind, then
+ * the primary window, then the first visible one. Scoped (per-model) windows
+ * are never chosen unless the provider reports nothing else.
  */
-export function labelWindowOf(arcs: QuotaWindow[]): QuotaWindow | null {
-  return arcs.find((w) => w.isPrimary) ?? arcs[0] ?? null;
+export function windowForPercent(
+  windows: readonly QuotaWindow[],
+  preferred: PercentWindow = 'auto'
+): QuotaWindow | null {
+  const accountWide = windows.filter((w) => w.scope == null);
+  const pool = accountWide.length > 0 ? accountWide : windows;
+  if (pool.length === 0) return null;
+  const matches = pool.filter((w) => matchesPercentWindow(w, preferred));
+  return matches.find((w) => w.isPrimary) ?? matches[0] ?? pool.find((w) => w.isPrimary) ?? pool[0];
+}
+
+/** Window the percent label of a group refers to (see `windowForPercent`). */
+export function labelWindowOf(
+  arcs: QuotaWindow[],
+  preferred: PercentWindow = 'auto'
+): QuotaWindow | null {
+  return windowForPercent(arcs, preferred);
 }
 
 export interface BarSeverity {

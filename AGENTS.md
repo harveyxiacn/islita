@@ -216,7 +216,7 @@ below list every key exactly once; `pnpm check:agents`
 | `islandMargin` | `12` (0 – 64) | gap in px between the island and the top of the monitor's work area (also the side gap when it is very wide) |
 | `islandIdle` | `{"providers":[],"plugins":[]}` | what the collapsed island draws: up to 6 quota keys (`claude`, `claude@work`, …) as rings and up to 6 plugin ids (`calendar`, `mail`, …) as icons. Empty `providers` = the busiest provider and a count. Invalid ids are dropped, duplicates removed |
 | `disabledPlugins` | `[]` | island plugin ids switched off in Settings → Plugins; they disappear from the rail and idle capsule, an open panel closes, and their background badges stop. A missing id is enabled, so a new plugin appears automatically. Local data and settings are kept; the array is replaced as a whole and sanitised like `islandIdle` (at most 64) |
-| `islandAutoHide` | `false`, `true` | hide the idle island as a thin handle on the top edge; pointing at it reveals the capsule, resting on it for a moment expands the board, and it hides again after `autoHideDelayMs` |
+| `islandAutoHide` | `false`, `true` | hide the idle island as a thin handle on the top edge; the native window docks flush to the top of the monitor's work area while hidden. Pointing at the handle reveals the capsule, resting on it for a moment expands the board, and it hides again after `autoHideDelayMs` |
 | `petOnDesktop` | `false`, `true` | show the pet as its own transparent, always-on-top window that can be dragged anywhere on the desktop. Opt-in; the window is created at startup and stays hidden while this is off. Also in the pet panel |
 | `petRoam` | `true`, `false` | let the desktop pet wander along the current monitor's work-area floor (idle pauses, turns, small falls). Only read while `petOnDesktop` is on; stays off while the pointer is on the pet, a menu is open or the pet sleeps |
 | `alwaysOnTop` | `true` | keep the bar above other windows |
@@ -233,9 +233,10 @@ below list every key exactly once; `pnpm check:agents`
 
 | Key | Values (default first) | Meaning |
 |---|---|---|
-| `ringMode` | `"concentric"`, `"primary"`, `"all"` | one ring per provider, only the primary window, or one per window |
+| `ringMode` | `"concentric"`, `"primary"`, `"all"` | one ring per provider, only the window chosen by `percentWindow` (default primary), or one per window |
 | `ringStyle` | `"ring"`, `"bar"` | rings, or compact mini-bars (a logo dot plus one slim bar per window) |
 | `percentMode` | `"used"`, `"remaining"` | |
+| `percentWindow` | `"auto"`, `"five_hour"`, `"seven_day"`, `"thirty_day"` | which account-wide limit the single percentage under a ring and the island summary describe. `auto` = the primary limit (the tightest one for OpenCode Go). A provider without the chosen limit falls back to its primary. `thirty_day` means a real ~30-day allowance, not a budget |
 | `percentPosition` | `"below"`, `"center"` | show the percentage below each ring, or in its centre in place of the provider logo; used only when `sidebarItems.percentLabel` is on |
 | `labelContent` | `"percent"`, `"reset"`, `"both"` | what the label says: percentage, reset countdown or both |
 | `sidebarAnimations` | `true`, `false` | one-shot pulse when a ring crosses a threshold and a flash on a reset; reduced motion turns them off |

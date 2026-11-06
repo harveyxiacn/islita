@@ -34,7 +34,7 @@
   );
 </script>
 
-<SettingsCard id="privacy" title={t('settings.card.privacy')} reset="privacy" wide>
+<SettingsCard id="privacy" title={t('settings.card.privacy')} reset="privacy">
   <Field label={t('settings.hideAccountEmail')} hint={t('settings.hideAccountEmail.hint')}>
     <Toggle
       checked={s.hideAccountEmail}

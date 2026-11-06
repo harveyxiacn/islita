@@ -302,10 +302,11 @@ Key semantics:
   `sidebarItems.scoped` is on; a group never exceeds three arcs. Codex never
   gets a third ring (its scoped windows are additional per-feature limits).
   Rings of one group share the provider hue in decreasing intensity; threshold
-  colours override per ring. The percent label shows the primary window.
-  `ringMode = "primary"`: one
-  plain ring per provider (primary window). `ringMode = "all"`: one ring per
-  non-scoped window.
+  colours override per ring. The percent label describes the window selected by
+  `percentWindow` (`auto` = the primary window). `ringMode = "primary"`: one
+  plain ring per provider, drawn for the `percentWindow` selection (default
+  primary). `ringMode = "all"`: one ring per non-scoped window, each labelled
+  with its own percentage.
 * `ProviderQuota.status`: `ok | not_logged_in | token_expired | rate_limited |
   error | disabled`. Any status other than `ok` still returns the last known
   windows (from cache or local logs) if available, with `source` telling where
@@ -490,7 +491,8 @@ Semantics, limits and privacy rules are in §11; the contract is the signature.
 | command | args | effect |
 |---|---|---|
 | `sidebar_set_expanded` | `expanded: boolean` | expand to full width / collapse to the thin handle (window resize + reposition). Emits `sidebar-state`. |
-| `sidebar_relayout` | `width: number, height: number` (CSS px the bar content needs) | resize sidebar window to fit content and re-anchor to the edge |
+| `sidebar_relayout` | `width: number, height: number` (CSS px the bar content needs) | resize sidebar window to fit content and re-anchor to the edge. While the island is auto-hidden the reported box is ignored (it is the peek, not the capsule). |
+| `sidebar_set_island_hidden` | `hidden: boolean, width: number, height: number` (CSS px) | island only: shrink the window to `width × height` docked flush with the top of the work area (`hidden: true`, `islandMargin` ignored) or grow it back to the reported capsule box. Ignored when `island` is off, and when hiding without `islandAutoHide`. |
 | `sidebar_drag` | `phase: 'start'\|'move'\|'end'\|'cancel', dx: number, dy: number` (CSS px the pointer travelled since `start`, screen space) | the bar follows the pointer; on `end` it snaps to the nearest of the four edges of the monitor it was dropped on (distances normalised by the monitor's half extent, so the zones meet at its diagonals, with a small hysteresis in favour of the current edge for corner drops) and the result is persisted as `edge` / `monitor` / `verticalOffset` (emits `settings-updated`). `cancel` puts it back. |
 | `popover_show` | `req: PopoverRequest` | position popover next to the ring and show it; emits `popover-target` to the popover window |
 | `popover_relayout` | `width: number, height: number` (CSS px the popover content needs) | resize the popover window to fit content and re-anchor it next to the ring |
@@ -573,7 +575,8 @@ the table in **AGENTS.md §5**, which `pnpm check:agents` keeps in step with
 shown (`autoHide=false`), `island=false`, `islandMargin=12`,
 `islandIdle={providers:[],plugins:[]}`, `disabledPlugins=[]`,
 `islandAutoHide=false`,
-`ringMode="concentric"`, every `sidebarItems` member on, `percentMode="used"`, `percentPosition="below"`,
+`ringMode="concentric"`, every `sidebarItems` member on, `percentMode="used"`,
+`percentWindow="auto"`, `percentPosition="below"`,
 `refreshIntervalSec=60`, `adaptiveRefresh=true`, dark theme, `surfaceStyle="glass"` (translucent liquid-glass pill/popover with specular highlight; `solid` = opaque, `cyber` = a neon sci-fi HUD painted by the frontend with no native backdrop), language `auto`, ingestion enabled,
 autostart off, thresholds warn 70 / critical 90, `notifications=false` with
 `forecastNotifications=true` (the predictive warning is on by default but only
@@ -641,14 +644,17 @@ enabled, so a new plugin needs no migration and its local data is never deleted
 by the switch. The array is replaced as a whole and sanitised like
 `islandIdle`, capped at 64.
 
-`islandAutoHide` (default false) is frontend-only state: after
+`islandAutoHide` (default false) adds an island-only idle state: after
 `autoHideDelayMs` (minimum 300 ms) with the capsule idle, unoccupied and no
 panel open, the stage shrinks to a 96 × 24 px hit box with a 4 px top-edge
-handle; pointing at the handle reveals the capsule, keyboard focus reveals and
+handle. The native window is docked flush with the top of the work area by
+`sidebar_set_island_hidden` (`islandMargin` applies to the visible capsule
+only); pointing at the handle reveals the capsule, keyboard focus reveals and
 expands it at once, 280 ms of pointer dwell expands the board, and leaving
 hides it again. It does not use the Rust hover state machine, which still owns
 `autoHide` for edge bars. The island reports its measured size through
-`sidebar_relayout`, like the edge bar.
+`sidebar_relayout`, like the edge bar, and both calls are serialised by the
+frontend so the window cannot be resized out of order.
 
 ### Sidebar visuals (labels, animations, compact mode)
 
@@ -691,8 +697,11 @@ Rules, implemented in `src/lib/sidebar-items.ts` and unit-tested in
   apply in all three `ringMode`s. A window with a `scope` counts as `scoped`
   whatever its `kind`; `other` means an account-wide window that is neither
   5-hour nor weekly;
-* the percent label of a group describes its primary window, falling back to
-  the first *visible* window;
+* the percent label of a group describes the account-wide window selected by
+  `percentWindow` (5-hour, weekly or a real ~30-day allowance); when that window
+  is hidden or absent it falls back to the primary window, then to the first
+  *visible* account-wide window. Scoped windows are never selected while an
+  account-wide one exists. `ringMode="all"` keeps one label per ring;
 * a provider whose windows are all hidden disappears from the bar (only from
   the bar). A provider that reports no windows at all keeps its dimmed
   placeholder ring, because that is status, not a hidden item;

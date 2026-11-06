@@ -37,6 +37,18 @@ test('by default the bar shows both providers with logo, percent and the ⋯ but
   );
 });
 
+test('the percent window setting switches the label to the chosen limit', async ({ page }) => {
+  await openBar(page, { percentWindow: 'seven_day' });
+  expect(await page.locator('.pct').allTextContents()).toEqual(['31%', '41%']);
+
+  // single-ring mode draws the chosen window, so arc and label agree
+  await openBar(page, { percentWindow: 'seven_day', ringMode: 'primary' });
+  await expect(page.getByRole('button', { name: /^Claude:/ })).toHaveAttribute(
+    'aria-label',
+    /^Claude: Weekly 31%/
+  );
+});
+
 test('each element toggle removes exactly its own part of the bar', async ({ page }) => {
   await openBar(page, { sidebarItems: { percentLabel: false } });
   await expect(page.locator('.slot')).toHaveCount(2);

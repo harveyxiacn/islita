@@ -126,12 +126,23 @@ hover state machine still owns auto-hide for edge bars.
 `islandAutoHide` adds a second, island-only idle state. When the capsule is
 idle, unoccupied and no panel is open, it collapses after `autoHideDelayMs`
 (minimum 300 ms) into a 96 × 24 px hit box with a 4 px handle on the top edge.
-Pointing at the handle reveals the capsule; keyboard focus reveals it and
-expands the board at once (Enter/Space does the same on the hidden handle).
-Resting the pointer on the revealed capsule for 280 ms expands the board.
-Leaving hides it again after the same delay, and hiding closes a pinned
-popover. Auto-hide never applies to the edge bar, whose collapse is still
-owned by `hover.rs`.
+The native window follows it: `sidebar_set_island_hidden(true, 96, 24)`
+resizes and re-centres it flush with the top of the monitor's work area
+(`islandMargin` is ignored while hidden), so the handle hides *towards* the
+edge instead of floating below it. Pointing at the handle reveals the capsule;
+keyboard focus reveals it and expands the board at once (Enter/Space does the
+same on the hidden handle). Resting the pointer on the revealed capsule for
+280 ms expands the board. Leaving hides it again after the same delay, and
+hiding closes a pinned popover. Auto-hide never applies to the edge bar, whose
+collapse is still owned by `hover.rs`.
+
+Reveal sends `sidebar_set_island_hidden(false, idle_w + border, idle_h +
+border)` before the capsule is painted, and expand/collapse keep using
+`sidebar_relayout`. The frontend serialises both calls through one promise
+chain so a reveal, an expansion and a collapse cannot overtake each other. A
+relayout measured while the island is hidden is never stored as the capsule
+size — neither by the frontend (the 96 × 24 peek is dropped) nor by
+`sidebar::relayout` (it only stores content while expanded and not hidden).
 
 The measured stage is reported through the existing `sidebar_relayout`
 protocol, so opening a panel grows the window and re-centres it. During an

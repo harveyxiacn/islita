@@ -60,6 +60,7 @@ export const defaultSettings: Settings = {
   ringMode: 'concentric',
   showScopedRing: true,
   percentMode: 'used',
+  percentWindow: 'auto',
   percentPosition: 'below',
   labelContent: 'percent',
   ringStyle: 'ring',

@@ -48,6 +48,7 @@
     popoverShow,
     sidebarDrag,
     sidebarRelayout,
+    sidebarSetIslandHidden,
     type Unlisten,
   } from '$lib/api';
   import { formatForecast, formatPercent, formatReset, severityOf, shortPercent, windowLabel } from '$lib/format';
@@ -168,6 +169,17 @@
   let islandHidden = $state(false);
   let islandDwellTimer: ReturnType<typeof setTimeout> | undefined;
   /**
+   * Both island geometry commands resize and re-centre the same native window.
+   * Sending them through one chain keeps a reveal, an expansion and a collapse
+   * from overtaking each other (each call is an async IPC round trip).
+   */
+  let islandDock: Promise<unknown> = Promise.resolve();
+  function queueIslandNative(op: () => Promise<unknown>) {
+    islandDock = islandDock.then(op, op).catch((e) => {
+      console.warn('island geometry failed', e);
+    });
+  }
+  /**
    * The pointer landed on the idle capsule: the first movement expands it.
    * Ring hover/click is ignored for that beat so a popover is never anchored
    * to the summary ring's pre-expansion position.
@@ -263,16 +275,25 @@
     const delay = Math.max(300, s.autoHideDelayMs);
     const timer = setTimeout(() => {
       if (stageHovered || activePluginId !== null || islandExpanded || islandHold) return;
-      islandHidden = true;
-      pinnedKey = null;
-      void popoverHide();
+      hideIsland();
     }, delay);
     return () => clearTimeout(timer);
   });
 
   // Turning the option off (or leaving island mode) brings the capsule back.
   $effect(() => {
-    if (!s.islandAutoHide && islandHidden) islandHidden = false;
+    if (!island) {
+      // The peek only exists in island mode; keep the flag from coming back
+      // stale when island mode is switched on again later.
+      if (islandHidden) islandHidden = false;
+      return;
+    }
+    if (s.islandAutoHide || !islandHidden) return;
+    if (islandReady && idleW > 0 && idleH > 0) {
+      revealIsland();
+    } else {
+      islandHidden = false;
+    }
   });
 
   /** Busiest provider, used as the idle island's single ring. */
@@ -287,10 +308,20 @@
   });
 
   function reportSize(size: SizeReport) {
+    // While hidden the stage is the 96 × 24 peek; the native window was
+    // parked there by `sidebar_set_island_hidden` and must not be resized by
+    // a measurement of its own hit box.
+    if (island && islandHidden) return;
+    // A queued measurement of the peek can land just after the reveal.
+    if (island && size.width === PEEK_W && size.height === PEEK_H) return;
     // The peek is not the bar's content: keep the expanded box to restore.
-    if (!collapsed && !islandHidden) expandedSize = size;
+    if (!collapsed) expandedSize = size;
     // A collapsed handle must not overwrite the size to restore on hover.
-    void sidebarRelayout(expandedSize.width, expandedSize.height);
+    if (island) {
+      queueIslandNative(() => sidebarRelayout(expandedSize.width, expandedSize.height));
+    } else {
+      void sidebarRelayout(expandedSize.width, expandedSize.height);
+    }
   }
 
   function onIdleSize(size: SizeReport) {
@@ -534,19 +565,28 @@
     if (islandReady) {
       const w = Math.max(openW, idleW) + ISLAND_BORDER;
       const h = Math.max(openH, idleH) + ISLAND_BORDER;
-      void sidebarRelayout(w, h);
+      queueIslandNative(() => sidebarRelayout(w, h));
     }
     islandExpanded = true;
+  }
+
+  /** Collapse the island into the thin handle docked to the top screen edge. */
+  function hideIsland() {
+    if (!island || islandHidden) return;
+    islandHidden = true;
+    pinnedKey = null;
+    void popoverHide();
+    queueIslandNative(() => sidebarSetIslandHidden(true, PEEK_W, PEEK_H));
   }
 
   /** Swap the top-edge handle for the idle capsule. */
   function revealIsland() {
     if (!islandHidden) return;
-    // Resize the native window first: it is only 24 px tall while hidden, so
+    // Grow the native window back: it is only 24 px tall while hidden, so
     // rendering the capsule before the resize lands would clip it.
-    if (idleW > 0 && idleH > 0) {
-      void sidebarRelayout(idleW + ISLAND_BORDER, idleH + ISLAND_BORDER);
-    }
+    const w = idleW > 0 ? idleW + ISLAND_BORDER : PEEK_W;
+    const h = idleH > 0 ? idleH + ISLAND_BORDER : PEEK_H;
+    queueIslandNative(() => sidebarSetIslandHidden(false, w, h));
     islandHidden = false;
   }
 
@@ -592,7 +632,7 @@
         () => {
           islandHold = false;
           if (island && idleW > 0 && idleH > 0) {
-            void sidebarRelayout(idleW + ISLAND_BORDER, idleH + ISLAND_BORDER);
+            queueIslandNative(() => sidebarRelayout(idleW + ISLAND_BORDER, idleH + ISLAND_BORDER));
           }
         },
         prefersReducedMotion() ? 80 : ISLAND_HOLD_MS
@@ -1214,11 +1254,14 @@
   }
 
   /* The hidden island: a 96 × 24 transparent hit box with a 4 px handle in the
-     middle, so pointing near the top edge is forgiving. */
+     middle, so pointing near the top edge is forgiving. It sits flush with the
+     screen edge: the native window is docked there too, and a top margin would
+     leave the handle floating below it. */
   .island-peek {
     width: 3.5rem;
+    max-width: calc(100% - 1rem);
     height: 0.25rem;
-    margin-top: 0.625rem;
+    margin-top: 0;
     border-radius: 999px;
     background: var(--muted);
     opacity: 0.45;
@@ -1240,7 +1283,8 @@
   }
 
   .stage[data-island]:focus-visible .island-peek {
-    box-shadow: 0 0 0 2px var(--focus);
+    /* inset: an outer ring would be clipped by the 24 px window at y = 0 */
+    box-shadow: inset 0 0 0 2px var(--focus);
   }
 
   .pill {

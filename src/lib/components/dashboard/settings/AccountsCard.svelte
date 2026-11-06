@@ -157,7 +157,7 @@
   );
 </script>
 
-<SettingsCard id="accounts" title={t('settings.accounts')} reset="accounts">
+<SettingsCard id="accounts" title={t('settings.accounts')} reset="accounts" wide>
   <SettingsBlock text={searchText}>
     <p class="note first">{t('settings.accounts.hint')}</p>
 

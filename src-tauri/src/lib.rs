@@ -187,6 +187,7 @@ pub fn run() {
             window::shortcuts::get_shortcut_registrations,
             window::sidebar_set_expanded,
             window::sidebar_relayout,
+            window::sidebar_set_island_hidden,
             window::sidebar_drag,
             window::popover_show,
             window::popover_relayout,

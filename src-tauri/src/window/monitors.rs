@@ -188,6 +188,15 @@ pub fn align_start(align: VerticalAlign, min: f64, span: f64, len: f64) -> f64 {
     }
 }
 
+/// Whether the island is drawn as the capsule or as the thin handle it
+/// auto-hides into. The peek docks to the top edge of the work area.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IslandPlacement {
+    #[default]
+    Visible,
+    Peek,
+}
+
 /// Where the sidebar window goes, in logical px.
 ///
 /// Along the docked edge the bar is sized to its content and positioned by
@@ -205,6 +214,26 @@ pub fn sidebar_rect(
     content_h: f64,
     expanded: bool,
 ) -> LogicalRect {
+    sidebar_rect_with(
+        mon,
+        settings,
+        content_w,
+        content_h,
+        expanded,
+        IslandPlacement::Visible,
+    )
+}
+
+/// [`sidebar_rect`] with an explicit island placement. `Peek` is ignored
+/// unless the dynamic island is on.
+pub fn sidebar_rect_with(
+    mon: &MonitorRect,
+    settings: &Settings,
+    content_w: f64,
+    content_h: f64,
+    expanded: bool,
+    island: IslandPlacement,
+) -> LogicalRect {
     let m = mon.rect;
     let thickness = settings.collapsed_width as f64;
     let offset = settings.vertical_offset as f64;
@@ -213,6 +242,14 @@ pub fn sidebar_rect(
     // top centre, keeps the content's size in both states (a collapsed handle
     // is an edge-bar idea) and grows downwards when a plugin panel opens.
     if settings.island {
+        // The auto-hidden handle hides *towards* the screen edge, so its
+        // window must sit flush with the top of the work area and ignore
+        // `island_margin`; otherwise it would float below the edge.
+        if island == IslandPlacement::Peek {
+            let width = content_w.max(1.0).min(m.w);
+            let height = content_h.max(1.0).min(m.h);
+            return LogicalRect::new(m.x + (m.w - width) / 2.0, m.y, width, height);
+        }
         let margin = settings.island_margin as f64;
         let available_w = (m.w - 2.0 * margin).max(1.0);
         let width = content_w.max(1.0).min(available_w);
@@ -387,6 +424,58 @@ mod tests {
         assert_eq!(r.y, 12.0);
         assert_eq!(r.h, 288.0);
         assert!(r.right() <= 400.0 && r.bottom() <= 300.0);
+    }
+
+    #[test]
+    fn island_peek_docks_flush_with_the_top_edge() {
+        let mut s = settings();
+        s.island = true;
+        s.island_margin = 12;
+        let r = sidebar_rect_with(&mon(), &s, 96.0, 24.0, true, IslandPlacement::Peek);
+        assert_eq!(
+            r.y, 0.0,
+            "the peek hides towards the edge, not below the margin"
+        );
+        assert_eq!((r.w, r.h), (96.0, 24.0));
+        assert_eq!(r.center_x(), 1280.0);
+    }
+
+    #[test]
+    fn island_peek_is_centred_on_an_offset_monitor() {
+        let m = MonitorRect::new("secondary", -1280.0, 40.0, 1280.0, 720.0, 2.0);
+        let mut s = settings();
+        s.island = true;
+        let r = sidebar_rect_with(&m, &s, 96.0, 24.0, false, IslandPlacement::Peek);
+        assert_eq!(r.y, 40.0);
+        assert_eq!(r.center_x(), -640.0);
+    }
+
+    #[test]
+    fn island_peek_ignores_margin_edge_align_and_offset() {
+        let mut s = settings();
+        s.island = true;
+        s.island_margin = 32;
+        s.edge = Edge::Bottom;
+        s.vertical_align = VerticalAlign::Bottom;
+        s.vertical_offset = 400;
+        let r = sidebar_rect_with(&mon(), &s, 96.0, 24.0, true, IslandPlacement::Peek);
+        assert_eq!((r.y, r.center_x()), (0.0, 1280.0));
+    }
+
+    #[test]
+    fn island_peek_is_ignored_when_the_island_is_off() {
+        let s = settings(); // island = false, right edge
+        let peek = sidebar_rect_with(&mon(), &s, 76.0, 160.0, true, IslandPlacement::Peek);
+        assert_eq!(peek, sidebar_rect(&mon(), &s, 76.0, 160.0, true));
+    }
+
+    #[test]
+    fn island_peek_is_capped_to_the_work_area() {
+        let m = MonitorRect::new("small", 30.0, 40.0, 80.0, 20.0, 1.0);
+        let mut s = settings();
+        s.island = true;
+        let r = sidebar_rect_with(&m, &s, 96.0, 24.0, true, IslandPlacement::Peek);
+        assert_eq!(r, LogicalRect::new(30.0, 40.0, 80.0, 20.0));
     }
 
     #[test]

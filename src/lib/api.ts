@@ -230,6 +230,10 @@ export const getShortcutStatus = () => invoke<ShortcutStatus>('get_shortcut_stat
 export const getShortcutRegistrations = () => invoke<ShortcutRegistrations>('get_shortcut_registrations');
 export const sidebarSetExpanded = (expanded: boolean) => invoke<void>('sidebar_set_expanded', { expanded });
 export const sidebarRelayout = (width: number, height: number) => invoke<void>('sidebar_relayout', { width, height });
+/** Collapse the island into the thin handle docked to the top screen edge
+ *  (`hidden: true`) or grow it back into the capsule. */
+export const sidebarSetIslandHidden = (hidden: boolean, width: number, height: number) =>
+  invoke<void>('sidebar_set_island_hidden', { hidden, width, height });
 /** dx/dy: CSS px the pointer travelled since the drag started */
 export const sidebarDrag = (phase: 'start' | 'move' | 'end' | 'cancel', dx = 0, dy = 0) => invoke<void>('sidebar_drag', { phase, dx, dy });
 export const listTaskCompletions = (query: { sinceMs?: number; limit?: number } = {}) =>

@@ -28,8 +28,8 @@ export function presetChanges(current: Settings, patch: SettingsPatch): SettingC
 
 /** Keys a custom preset captures: how the bar looks, not where it lives. */
 const CAPTURED: readonly (keyof Settings)[] = [
-  'theme', 'surfaceStyle', 'cyberAccent', 'scale', 'opacity', 'percentMode', 'percentPosition',
-  'ringMode', 'sidebarItems', 'colors', 'sizes',
+  'theme', 'surfaceStyle', 'cyberAccent', 'scale', 'opacity', 'percentMode', 'percentWindow',
+  'percentPosition', 'ringMode', 'sidebarItems', 'colors', 'sizes',
 ];
 
 /** The current appearance and sidebar items as a preset patch. */

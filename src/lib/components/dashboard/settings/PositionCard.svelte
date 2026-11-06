@@ -88,8 +88,10 @@
   }
 </script>
 
-<SettingsCard id="position" title={t('settings.position')} reset="position">
+<SettingsCard id="position" title={t('settings.position')} reset="position" wide>
   {#if error}<p class="err" role="alert">{t('common.error', { message: error })}</p>{/if}
+
+  <h4>{t('settings.subhead.island')}</h4>
 
   <Field label={t('settings.island')} hint={t('settings.island.hint')}>
     <Toggle
@@ -170,6 +172,12 @@
     </Field>
   {/if}
 
+  <h4>{t('settings.subhead.edge')}</h4>
+
+  {#if s.island}
+    <p class="note">{t('settings.edge.disabled')}</p>
+  {/if}
+
   <Field label={t('settings.edge')}>
     <select aria-label={t('settings.edge')} class="field" value={s.edge} disabled={s.island} onchange={(e) => void settings.patch({ edge: e.currentTarget.value as Edge })}>
       {#each EDGES as v (v)}<option value={v}>{tDyn(`settings.edge.${v}`)}</option>{/each}
@@ -217,6 +225,19 @@
 </SettingsCard>
 
 <style>
+  h4 {
+    margin: 1rem 0 0.125rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  h4:first-of-type {
+    margin-top: 0.25rem;
+  }
+
   .picks {
     display: flex;
     flex-wrap: wrap;

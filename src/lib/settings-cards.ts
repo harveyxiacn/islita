@@ -30,7 +30,7 @@ type Key = keyof Settings;
  * the union of the cards and nothing is reset twice or forgotten.
  */
 export const CARD_KEYS: Record<CardId, readonly Key[]> = {
-  appearance: ['theme', 'language', 'scale', 'opacity', 'percentMode', 'percentPosition', 'ringMode', 'surfaceStyle', 'cyberAccent', 'labelContent', 'ringStyle', 'sidebarAnimations'],
+  appearance: ['theme', 'language', 'scale', 'opacity', 'percentMode', 'percentWindow', 'percentPosition', 'ringMode', 'surfaceStyle', 'cyberAccent', 'labelContent', 'ringStyle', 'sidebarAnimations'],
   sidebarItems: ['sidebarItems'],
   sizeColour: ['colors', 'sizes'],
   position: ['edge', 'verticalAlign', 'verticalOffset', 'monitor', 'island', 'islandMargin', 'islandAutoHide', 'islandIdle', 'petOnDesktop', 'petRoam', 'alwaysOnTop'],

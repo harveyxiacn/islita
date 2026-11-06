@@ -4,7 +4,9 @@ import {
   barProviders,
   barSeverity,
   labelWindowOf,
+  matchesPercentWindow,
   providerOnBar,
+  windowForPercent,
   windowOnBar,
   defaultSidebarItems,
 } from '../src/lib/sidebar-items';
@@ -153,6 +155,60 @@ test('the label window falls back to the first visible window', () => {
   expect(labelWindowOf(withoutFiveHour)?.scope).toBe(null);
 
   expect(labelWindowOf([])).toBe(null);
+});
+
+test('the percent window follows the requested kind, then the primary one', () => {
+  const q = claude();
+
+  expect(windowForPercent(q.windows, 'auto')?.kind).toBe('five_hour');
+  expect(windowForPercent(q.windows, 'seven_day')?.usedPercent).toBe(31);
+  // Claude has no 30-day allowance: fall back to the primary window.
+  expect(windowForPercent(q.windows, 'thirty_day')?.kind).toBe('five_hour');
+
+  // A matching primary wins inside the requested kind.
+  const twoWeeklies = [
+    win('seven_day', 10, { windowSeconds: 7 * 86_400 }),
+    win('seven_day', 80, { windowSeconds: 7 * 86_400, isPrimary: true }),
+  ];
+  expect(windowForPercent(twoWeeklies, 'seven_day')?.usedPercent).toBe(80);
+
+  // No primary at all: first visible window.
+  const noPrimary = [win('seven_day', 10), win('five_hour', 40)];
+  expect(windowForPercent(noPrimary, 'five_hour')?.usedPercent).toBe(40);
+  expect(windowForPercent([], 'seven_day')).toBeNull();
+});
+
+test('the percent window never picks a scoped window when an account-wide one exists', () => {
+  const windows = [
+    win('seven_day', 90, { scope: 'Fable', isPrimary: true }),
+    win('seven_day', 20, { windowSeconds: 7 * 86_400 }),
+  ];
+  expect(windowForPercent(windows, 'seven_day')?.usedPercent).toBe(20);
+  expect(windowForPercent(windows, 'seven_day')?.scope).toBeNull();
+});
+
+test('thirty_day means a real 30-day allowance, not a budget', () => {
+  const thirty = win('other', 59, { windowSeconds: 30 * 86_400 });
+  const budget = win('other', 80);
+  expect(matchesPercentWindow(thirty, 'thirty_day')).toBe(true);
+  expect(matchesPercentWindow(budget, 'thirty_day')).toBe(false);
+  expect(windowForPercent([budget, thirty], 'thirty_day')?.usedPercent).toBe(59);
+  expect(windowForPercent([budget], 'thirty_day')?.usedPercent).toBe(80);
+});
+
+test('primary ring mode draws the window the percent setting selects', () => {
+  const q = claude();
+  expect(kinds(barGroups(q, settingsWith({ ringMode: 'primary' })))).toEqual([['five_hour:-']]);
+  expect(
+    kinds(barGroups(q, settingsWith({ ringMode: 'primary', percentWindow: 'seven_day' })))
+  ).toEqual([['seven_day:-']]);
+  // "all" keeps one ring and one label per window, whatever the preference.
+  expect(
+    kinds(barGroups(q, settingsWith({ ringMode: 'all', percentWindow: 'seven_day' })))
+  ).toEqual([['five_hour:-'], ['seven_day:-']]);
+
+  const concentric = barGroups(q, settingsWith({ ringMode: 'concentric', percentWindow: 'seven_day' }))[0];
+  expect(labelWindowOf(concentric, 'seven_day')?.usedPercent).toBe(31);
 });
 
 test('a provider whose windows are all hidden leaves the bar, a silent one keeps a placeholder', () => {

@@ -36,6 +36,9 @@ use tauri::{AppHandle, Listener, Manager, WebviewWindow, WindowEvent};
 
 /// Sidebar content size (logical px) until the frontend reports a real one.
 pub const DEFAULT_SIDEBAR_SIZE: (f64, f64) = (76.0, 160.0);
+/// Size of the auto-hidden island handle (logical px) until the frontend
+/// reports the measured peek box. Matches `PEEK_W`/`PEEK_H` in `+page.svelte`.
+pub const DEFAULT_ISLAND_PEEK: (f64, f64) = (96.0, 24.0);
 /// Popover content size (logical px) until the frontend reports a real one.
 pub const DEFAULT_POPOVER_SIZE: (f64, f64) = (340.0, 220.0);
 /// Gap between the sidebar and the popover, logical px.
@@ -71,6 +74,10 @@ pub struct Inner {
     pub popover_hovered: bool,
     /// Content size the sidebar webview asked for (logical px).
     pub sidebar_content: (f64, f64),
+    /// Size of the auto-hidden island handle (logical px).
+    pub sidebar_peek: (f64, f64),
+    /// The island is currently collapsed against the screen edge.
+    pub island_hidden: bool,
     /// Content size the popover webview asked for (logical px).
     pub popover_content: (f64, f64),
     /// The last `popover_show` request, used to re-anchor on relayout.
@@ -99,6 +106,8 @@ impl Default for Inner {
             bar_hovered: false,
             popover_hovered: false,
             sidebar_content: DEFAULT_SIDEBAR_SIZE,
+            sidebar_peek: DEFAULT_ISLAND_PEEK,
+            island_hidden: false,
             popover_content: DEFAULT_POPOVER_SIZE,
             popover_req: None,
             popover_visible: false,
@@ -508,6 +517,11 @@ fn install_close_handlers(app: &AppHandle) {
 /// Re-read the settings and re-apply everything the platform layer owns.
 pub fn apply_settings(app: &AppHandle) {
     let settings = settings_of(app);
+    // Turning the island (or its auto-hide) off must bring the capsule back:
+    // the peek has no meaning outside that mode.
+    if !settings.island || !settings.island_auto_hide {
+        with_state(app, |inner| inner.island_hidden = false);
+    }
     hover::settings_changed(app);
     sidebar::place(app);
     popover::reposition(app);
@@ -597,6 +611,20 @@ pub async fn sidebar_set_expanded(app: AppHandle, expanded: bool) -> Result<(), 
 #[tauri::command]
 pub async fn sidebar_relayout(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
     sidebar::relayout(&app, width, height);
+    Ok(())
+}
+
+/// Grow the island back into the capsule or collapse it into the thin handle
+/// docked to the top work-area edge. `width`/`height` are the DOM box of the
+/// state being entered (logical px).
+#[tauri::command]
+pub async fn sidebar_set_island_hidden(
+    app: AppHandle,
+    hidden: bool,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    sidebar::set_island_hidden(&app, hidden, width, height);
     Ok(())
 }
 

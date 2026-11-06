@@ -552,7 +552,10 @@ first: 30-day (`monthly`) outermost, weekly (`weekly`) in the middle, 5-hour
 `src/lib/stores/rings.svelte.ts`) caps a group at three arcs, so no fourth ring
 is drawn. `mark_tightest` makes the allowance closest to its cap `isPrimary`,
 so the group's percentage label follows that window rather than always the
-5-hour one.
+5-hour one. Setting `percentWindow` to `five_hour`, `seven_day` or
+`thirty_day` overrides that choice for the label (and for the single ring in
+`ringMode: "primary"`); a provider without the chosen allowance falls back to
+its primary window.
 
 ### 6.2 Zen: monthly budgets
 
