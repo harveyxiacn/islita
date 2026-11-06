@@ -33,8 +33,13 @@ pub fn desired_rect(app: &AppHandle, expanded: bool) -> Option<(LogicalRect, f64
 /// A relayout reports the DOM content box of the state on screen. While the
 /// island is hidden that box is the peek handle; storing it would make the
 /// next reveal restore the wrong capsule size.
-fn remembers_content(expanded: bool, island_hidden: bool) -> bool {
-    expanded && !island_hidden
+///
+/// The edge bar's `expanded` flag says nothing about the island: the island
+/// never has a collapsed handle, and the auto-hide state machine may still
+/// report the bar as collapsed. If that blocked the island's measurements the
+/// window would stay at the initial 76 px and clip the capsule and every panel.
+fn remembers_content(expanded: bool, island_hidden: bool, island: bool) -> bool {
+    !island_hidden && (expanded || island)
 }
 
 /// The rect the bar currently occupies according to our own bookkeeping — the
@@ -95,10 +100,12 @@ pub fn relayout(app: &AppHandle, width: f64, height: f64) {
         log::warn!("sidebar_relayout ignored: {width}x{height}");
         return;
     }
+    let island = window::settings_of(app).island;
     window::with_state(app, |inner| {
         // A collapsed handle is not the expanded content. Remember the latter
         // so expansion restores its width before the webview's next layout.
-        if remembers_content(inner.expanded, inner.island_hidden) {
+        // The island always follows its DOM, whatever the edge-bar state says.
+        if remembers_content(inner.expanded, inner.island_hidden, island) {
             inner.sidebar_content = (width, height);
         }
     });
@@ -466,10 +473,16 @@ mod tests {
 
     #[test]
     fn relayout_never_stores_the_peek_as_capsule_content() {
-        assert!(remembers_content(true, false));
-        assert!(!remembers_content(true, true));
-        assert!(!remembers_content(false, false));
-        assert!(!remembers_content(false, true));
+        assert!(remembers_content(true, false, false));
+        assert!(!remembers_content(true, true, false));
+        assert!(!remembers_content(false, false, false));
+        assert!(!remembers_content(false, true, false));
+        // The island has no collapsed edge handle: a stale "collapsed" flag
+        // must not stop its measured capsule from reaching the window.
+        assert!(remembers_content(false, false, true));
+        assert!(remembers_content(true, false, true));
+        assert!(!remembers_content(false, true, true));
+        assert!(!remembers_content(true, true, true));
     }
 
     #[test]

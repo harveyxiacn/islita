@@ -652,9 +652,11 @@ handle. The native window is docked flush with the top of the work area by
 only); pointing at the handle reveals the capsule, keyboard focus reveals and
 expands it at once, 280 ms of pointer dwell expands the board, and leaving
 hides it again. It does not use the Rust hover state machine, which still owns
-`autoHide` for edge bars. The island reports its measured size through
-`sidebar_relayout`, like the edge bar, and both calls are serialised by the
-frontend so the window cannot be resized out of order.
+`autoHide` for edge bars and stays out of the way while the island is on. The
+island reports its measured size through `sidebar_relayout`, which accepts
+island measurements whatever the edge bar's collapsed flag says, and both
+calls are serialised by the frontend so the window cannot be resized out of
+order.
 
 ### Sidebar visuals (labels, animations, compact mode)
 

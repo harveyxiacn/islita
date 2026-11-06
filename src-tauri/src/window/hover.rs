@@ -82,7 +82,7 @@ pub fn schedule_idle_timers(app: &AppHandle) {
         return;
     };
     let settings = window::settings_of(app);
-    let auto_hide = settings.auto_hide;
+    let auto_hide = edge_bar_auto_hides(settings.auto_hide, settings.island);
     let collapse_after = settings.auto_hide_delay_ms;
     let hide_after = if pinned {
         window::PINNED_POPOVER_HIDE_DELAY_MS
@@ -115,11 +115,20 @@ pub fn schedule_idle_timers(app: &AppHandle) {
         if rest > 0 {
             tokio::time::sleep(Duration::from_millis(rest)).await;
         }
-        if !still_away(&app, generation) || !window::settings_of(&app).auto_hide {
+        let current = window::settings_of(&app);
+        if !still_away(&app, generation) || !edge_bar_auto_hides(current.auto_hide, current.island)
+        {
             return;
         }
         sidebar::set_expanded(&app, false);
     });
+}
+
+/// The edge bar's auto-hide only exists while the island is off. The island
+/// has its own frontend-driven auto-hide (`sidebar_set_island_hidden`), so
+/// collapsing the native bar here would only freeze its content width.
+fn edge_bar_auto_hides(auto_hide: bool, island: bool) -> bool {
+    auto_hide && !island
 }
 
 /// Correct hover flags against the real pointer while the popover is up. A
@@ -242,10 +251,12 @@ fn outside_all<'a>(
 }
 
 /// Settings changes must invalidate timers that captured the old auto-hide
-/// flag/delay. Disabling auto-hide also restores the expanded window at once.
+/// flag/delay. Disabling auto-hide — or entering island mode, where the edge
+/// bar is not used — also restores the expanded window at once.
 pub fn settings_changed(app: &AppHandle) {
     let settings = window::settings_of(app);
-    if !settings.auto_hide && window::snapshot(app).is_some_and(|inner| !inner.expanded) {
+    let collapsed = window::snapshot(app).is_some_and(|inner| !inner.expanded);
+    if collapsed && (!settings.auto_hide || settings.island) {
         sidebar::set_expanded(app, true);
     }
     schedule_idle_timers(app);
@@ -268,6 +279,14 @@ fn away_at_generation(state: &window::Inner, generation: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn island_mode_never_collapses_the_edge_bar() {
+        assert!(edge_bar_auto_hides(true, false));
+        assert!(!edge_bar_auto_hides(true, true));
+        assert!(!edge_bar_auto_hides(false, false));
+        assert!(!edge_bar_auto_hides(false, true));
+    }
 
     #[test]
     fn pending_timer_cannot_act_after_a_new_generation() {

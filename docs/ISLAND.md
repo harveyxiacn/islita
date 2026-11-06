@@ -142,7 +142,8 @@ border)` before the capsule is painted, and expand/collapse keep using
 chain so a reveal, an expansion and a collapse cannot overtake each other. A
 relayout measured while the island is hidden is never stored as the capsule
 size — neither by the frontend (the 96 × 24 peek is dropped) nor by
-`sidebar::relayout` (it only stores content while expanded and not hidden).
+`sidebar::relayout` (it never stores while hidden, and the edge bar's
+collapsed flag does not apply to the island).
 
 The measured stage is reported through the existing `sidebar_relayout`
 protocol, so opening a panel grows the window and re-centres it. During an
