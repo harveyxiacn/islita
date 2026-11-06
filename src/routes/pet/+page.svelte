@@ -6,8 +6,9 @@
   page draws the character and owns the personality:
 
   * `pet-motion` events (moving / dir / falling) switch the sprite between
-    idle, walk, sleep and drag; the art walks left, so a rightward walk is
-    mirrored and a leftward one is not.
+    idle, walk, sleep and drag. The H3 clips are drawn walking left, so they
+    are mirrored for a rightward walk; pack frames use the movement direction
+    directly.
   * Dragging is done in JS with `pet_move_by`, so a click still registers as a
     pat. The platform stops the wander loop for the duration.
   * The same state machine and localStorage entry as the island's pet panel
@@ -74,6 +75,7 @@
     artForMode,
     desktopArt,
     facing,
+    filmFacing,
     isPetAction,
     normaliseMotion,
     parsePetDesktopPosition,
@@ -212,6 +214,8 @@
   const feastLabel = $derived(t('plugin.pet.rice.eating', { name: pet.name }));
   /** The bundled DeepSeek chibi has one H3 performance per desktop mode. */
   const animatable = $derived(hasPetAnimations(pet));
+  /** Packs face right; the H3 clips are drawn facing left. */
+  const filmScale = $derived(animatable ? filmFacing(facingDir) : facingDir);
   const animClip = $derived(animationForMode(mode));
   const animLabel = $derived(tDyn(animationLabelKey(animClip), { name: pet.name }));
   const animOnce = $derived(!animationLoops(animClip));
@@ -800,7 +804,7 @@
   >
     <span
       class="pet-wrap"
-      style:transform={selectedPack ? 'none' : `scaleX(${facingDir})`}
+      style:transform={selectedPack ? 'none' : `scaleX(${filmScale})`}
     >
       <span
         class="pet-figure mode-{mode}"

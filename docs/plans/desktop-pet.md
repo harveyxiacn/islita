@@ -145,7 +145,8 @@ size; the poster covers decode and reduced motion and is hidden as soon as the
 strip is ready, otherwise its transparent pixels let a second silhouette show
 through. A one-shot clip holds its last frame (`animationLoops`), and the page
 adds a small `pet-leap` lift because H3 keeps the character centred. The clips
-are drawn walking left; a rightward wander is mirrored, a leftward one is not.
+are drawn walking left, so a rightward wander is mirrored and a leftward one is
+not; DyberPet packs keep using the plain movement direction.
 
 The sleeping ZZZ is not generated: `SleepZzz.svelte` floats three stroked Z
 letters from the character. That guarantees readable, localisable text
