@@ -519,9 +519,8 @@ mod tests {
             r#"{{"choices":[{{"message":{{"content":"{open}private{close}Use Claude."}}}}]}}"#
         );
         assert_eq!(reply_from_json(body.as_bytes()).unwrap(), "Use Claude.");
-        let unterminated = format!(
-            r#"{{"choices":[{{"message":{{"content":"{open}still thinking"}}}}]}}"#
-        );
+        let unterminated =
+            format!(r#"{{"choices":[{{"message":{{"content":"{open}still thinking"}}}}]}}"#);
         assert!(reply_from_json(unterminated.as_bytes()).is_err());
     }
 
