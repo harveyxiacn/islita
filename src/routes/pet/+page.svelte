@@ -50,7 +50,7 @@
   import DesktopFeast from '$lib/pet/DesktopFeast.svelte';
   import Mochi from '$lib/pet/Mochi.svelte';
   import PackSprite from '$lib/pet/PackSprite.svelte';
-  import RiceFeast from '$lib/pet/RiceFeast.svelte';
+  import RiceFeastFilm from '$lib/pet/RiceFeastFilm.svelte';
   import {
     packFramePath,
     packIdlePose,
@@ -92,8 +92,8 @@
     { id: 'pat', label: 'plugin.pet.pat', icon: 'M8 13S2.5 9.7 2.5 6.3A2.8 2.8 0 0 1 8 4.8a2.8 2.8 0 0 1 5.5 1.5C13.5 9.7 8 13 8 13Z' },
   ];
 
-  /** How long the rice bowl stays out; the island panel uses the same hold. */
-  const FEAST_MS = 6000;
+  /** One loop of the H3 rice clip (5.17 s), rounded to the sprite loop. */
+  const FEAST_MS = 5200;
 
   const NOTABLE = new Set<PetSituation>(['warn', 'critical', 'providerDown', 'paused']);
   const SPOKEN = new Set<PetSituation>([
@@ -700,7 +700,6 @@
     </div>
   {/if}
 
-  <div class="pet-aura" aria-hidden="true"></div>
   <div class="pet-shadow" aria-hidden="true"></div>
   <!-- Bundled DeepSeek art brings its own bowl; every other skin gets one. -->
   {#if !(feasting && feastable)}
@@ -722,10 +721,15 @@
       class="pet-wrap"
       style:transform={selectedPack ? 'none' : `scaleX(${facingDir})`}
     >
-      <span class="pet-figure mode-{mode}" class:falling={motion.falling} class:chewing={feasting}>
+      <span
+        class="pet-figure mode-{mode}"
+        class:falling={motion.falling}
+        class:chewing={feasting}
+        class:filming={feasting && feastable}
+      >
         {#if feasting && feastable}
           <span class="rice-figure">
-            <RiceFeast active label={feastLabel} />
+            <RiceFeastFilm active label={feastLabel} />
           </span>
         {:else if pet.sprite}
           {#if pet.sprite.frames === 4}
@@ -827,19 +831,6 @@
     background: var(--pet-bubble-bg, rgb(255 255 255 / 0.92));
   }
 
-  .pet-aura {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    z-index: 0;
-    width: 17rem;
-    max-width: 96vw;
-    height: 13rem;
-    background: radial-gradient(ellipse at 50% 82%, var(--pet-glow, transparent), transparent 68%);
-    transform: translateX(-50%);
-    pointer-events: none;
-  }
-
   .pet-shadow {
     position: absolute;
     bottom: 2.5%;
@@ -922,6 +913,11 @@
   /* Overrides the idle/walk bob for the six seconds of the rice bowl. */
   .pet-figure.chewing {
     animation: pet-chew 0.62s ease-in-out infinite;
+  }
+
+  /* The generated film already carries its own bounce and chew. */
+  .pet-figure.chewing.filming {
+    animation: none;
   }
 
   /* The rice cutout replaces the full-body art for the cutscene; the square

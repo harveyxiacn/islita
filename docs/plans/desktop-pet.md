@@ -17,8 +17,9 @@ It provides:
 - fullness, mood and energy needs that decay with elapsed time;
 - feed, play, rest and pat interactions, XP, levels, a short reaction line and a
   lifetime bowls-eaten count;
-- a DeepSeek 大肥鱼 rice-eating cutscene (transparent cutout + CSS steam, grain
-  and sparkle motion) shared by the panel and the detached window;
+- a DeepSeek 大肥鱼 rice-eating cutscene generated with MiniMax H3: a muted
+  5.2 s video in the island panel, a chroma-keyed 60-frame transparent strip in
+  the detached window, and the original CSS cutout as the fallback;
 - original character-voice lines driven by quota, provider and pet needs, shown
   in the panel and beside a ring's quota popover, plus an unread dot and a
   hungry/sleepy need dot on the pet's island rail icon;
@@ -119,14 +120,48 @@ popover speaks about that provider, but both use the same voice and line table.
 
 ## Rice feast
 
-Feeding the bundled DeepSeek chibi plays a six-second cutscene. The artwork is
-`static/pet/deepseek-chibi-rice.webp`: the supplied feed card with its flat
-background flood-filled away, a softened anti-aliased rim, a few compression
-specks removed and the card's leftover calligraphy masked. `RiceFeast.svelte`
-keeps the whole card, then adds CSS-only steam, eight grains arcing from the
-bowl to the mouth, a warm glow and sparkles; the figure itself has a short
-munch loop. There is no video, canvas or runtime model call, so the cutscene is
-sharp at every scale and stops under `prefers-reduced-motion`.
+Feeding the bundled DeepSeek chibi plays a 5.2-second cutscene. It exists in
+three forms, in fallback order:
+
+1. **Island panel — video.** `RiceFeastVideo.svelte` plays a 768×448, 24 fps,
+   5.17 s MiniMax-H3 clip (`static/pet/deepseek-feast.{webm,mp4}`, with a
+   `.webp` poster) with the sound muted. A soft oval mask blends the clip's
+   deep-sea plate into the panel scene, so the clip reads as part of the panel
+   rather than a video player. Its first and last frames are the same image, so
+   the loop is seamless; `FEAST_MS` is 5.2 s.
+2. **Detached window — transparent strip.** `RiceFeastFilm.svelte` draws a
+   60-frame horizontal WebP (`static/pet/deepseek-feast-sheet.webp`, 15360×256,
+   about 1 MB) and advances one 256 px cell at 12 fps with a small rAF loop and
+   `translateX`. Unlike CSS `steps()` on `background-position`, this lands
+   exactly on every cell at any container size. The film is silent and has an
+   alpha channel, so the window keeps the desktop wallpaper and stays a pet,
+   not a rectangle.
+3. **Fallback — CSS cutout.** `RiceFeast.svelte` keeps the original supplied
+   `deepseek-chibi-rice.webp` cutout with CSS steam, eight grains, sparkles and
+   a munch loop. It is used when `prefers-reduced-motion: reduce`, when the
+   video cannot start within 4 s, or when the sheet fails to load, so the
+   moment never breaks on an older WebView.
+
+### H3 generation
+
+The clip was generated locally with **MiniMax H3** in ComfyUI on an RTX 4090
+(24 GB): `minimax_h3_fl2va_pruned_int8_convrot`, the Qwen3-VL 32B H3 text
+encoder, the fp16 video and fp32 audio VAEs, and the **Larry v4-600 EMA**
+Turbo LoRA at strength 1.0, 8 steps, `MiniMaxH3SigmaShift` 12/3, 124 frames at
+24 fps. The first and last frames are the same image so the loop closes. The
+panel start frame places the supplied cutout on a painted deep-sea plate
+(768×448); the desktop pass places it on a flat `#00b140` chroma screen
+(768×768) and asks the model for no steam, shadows or green spill. Each pass
+took about two minutes end to end; model loading dominates, so the 4-step
+LoRAs were only ~20 s faster and visibly softer.
+
+The chroma pass uses the green excess `G - max(R, B)` as alpha,
+un-premultiplies against the screen colour, despills, erodes by one pixel and
+softens by 0.6 px. Sixty every-other frames are cropped to a fixed square,
+premultiplied before Lanczos downscaling to 256 px, and packed into the WebP
+strip. The source clips and a screen recording live in `docs/media/`; the
+generation scripts are not part of the app, and there is no runtime model, GPU
+or network dependency.
 
 The cutscene is deliberately limited to the bundled chibi. A transformed
 DeepSeek, another skin, a custom sprite or a DyberPet pack keeps its own art
@@ -235,7 +270,8 @@ original 3D mascot, not for preserving this 2D character art. The island
   page vetoes roaming with `pet_set_roaming`. Sleeping is derived
   (`shouldSleep`): energy below 22 or three quiet minutes; interacting wakes it.
 - `prefers-reduced-motion` keeps the window's real movement but removes the
-  decorative bob/hop/dangle loops.
+  decorative bob/hop/dangle loops; the rice feast falls back to the still
+  cutout.
 
 Interaction: click = pat, drag = move, right-click = a compact menu with
 Feed / Play / Rest / Pet, a Wander toggle (`petRoam`), Settings… and Hide from
@@ -321,12 +357,14 @@ not exposed by Tauri).
   against the files on disk, the Rust window constants, position parsing,
   actions, sleep and facing.
 - `tests/pet.e2e.ts` opens the island panel, checks the default mascot/stats,
-  verifies that feeding shows the rice cutscene and increments the meals chip,
-  and seeds a hungry pet to check the rail's need dot and tooltip.
+  verifies that feeding shows the video feast (`data-kind="video"`), increments
+  the meals chip, and seeds a hungry pet to check the rail's need dot and
+  tooltip.
 - `tests/pet-desktop.e2e.ts` opens `/pet` in the browser preview, renders the
   saved DeepSeek/Hachiware/Mochi/custom sprite, pats, feeds from the context
-  menu (cutscene for DeepSeek, standalone bowl for other skins), verifies the
-  persisted fullness and meals, and toggles Wander.
+  menu (the transparent film for DeepSeek, the standalone bowl for other
+  skins), checks that the strip advances, verifies the persisted fullness and
+  meals, toggles Wander, and checks the reduced-motion CSS fallback.
 - `cargo test --locked` covers the window clamp and random-range helpers;
   `cargo clippy --locked --all-targets -- -D warnings`, `pnpm check`,
   `pnpm check:i18n` and `pnpm check:agents` are part of the release gate.

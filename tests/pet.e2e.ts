@@ -97,9 +97,10 @@ test('desktop pet opens with stats, switches skins/forms and reacts to feeding',
   // The bundled DeepSeek chibi swaps the sticker card for the rice cutscene.
   const feast = panel.getByTestId('rice-feast');
   await expect(feast).toBeVisible();
-  await expect(feast.locator('img.rice-fish')).toHaveAttribute(
+  await expect(feast).toHaveAttribute('data-kind', 'video');
+  await expect(feast.locator('video source').first()).toHaveAttribute(
     'src',
-    /\/pet\/deepseek-chibi-rice\.webp$/
+    /\/pet\/deepseek-feast\.webm$/
   );
   await expect(panel.locator('.meals-chip')).toHaveAttribute('aria-label', 'Bowls eaten: 1');
 

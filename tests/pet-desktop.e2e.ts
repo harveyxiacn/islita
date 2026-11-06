@@ -57,11 +57,16 @@ test('the detached pet renders the saved skin, walks and reacts to a pat', async
   // The bundled DeepSeek chibi becomes the rice cutscene, bowl included.
   const feast = page.getByTestId('rice-feast');
   await expect(feast).toBeVisible();
-  await expect(feast.locator('img.rice-fish')).toHaveAttribute(
-    'src',
-    /\/pet\/deepseek-chibi-rice\.webp$/
-  );
+  await expect(feast).toHaveAttribute('data-kind', 'film');
+  await expect(feast).toHaveAttribute('data-src', /\/pet\/deepseek-feast-sheet\.webp$/);
+  const strip = feast.locator('img.sheet');
+  await expect(strip).toBeVisible();
+  const firstFrame = await strip.evaluate((element) => getComputedStyle(element).transform);
+  await page.waitForTimeout(250);
+  const laterFrame = await strip.evaluate((element) => getComputedStyle(element).transform);
+  expect(laterFrame).not.toBe(firstFrame);
   await expect(page.locator('.pet-figure')).toHaveClass(/chewing/);
+  await expect(page.locator('.pet-figure')).toHaveClass(/filming/);
   await expect(page.getByTestId('desktop-feast')).toHaveCount(0);
 
   const stored = await page.evaluate(() =>
@@ -144,4 +149,26 @@ test('a custom portrait sprite takes precedence over the skin', async ({ page })
   await expect(sprite).toBeVisible();
   await expect(sprite).toHaveAttribute('src', /^data:image\/png;base64,/);
   await expect(page.locator('svg.creature')).toHaveCount(0);
+});
+
+test('reduced motion keeps the still rice cutout', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await seed(page, { skin: 'deepseek', form: 'chibi', name: 'Fishy' });
+  await page.goto(PET_URL);
+
+  const petButton = page.getByRole('button', { name: 'Pet: Fishy' });
+  await petButton.waitFor();
+  await petButton.click({ button: 'right' });
+  await page
+    .getByRole('menu', { name: 'Pet menu' })
+    .getByRole('menuitem', { name: 'Feed', exact: true })
+    .click();
+
+  const feast = page.getByTestId('rice-feast');
+  await expect(feast).toHaveAttribute('data-kind', 'cutout');
+  await expect(feast.locator('img.rice-fish')).toHaveAttribute(
+    'src',
+    /\/pet\/deepseek-chibi-rice\.webp$/
+  );
+  await expect(feast.locator('img.rice-fish')).toHaveCSS('animation-name', 'none');
 });

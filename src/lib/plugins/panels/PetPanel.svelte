@@ -73,7 +73,7 @@
   import Mochi from '$lib/pet/Mochi.svelte';
   import PackSprite from '$lib/pet/PackSprite.svelte';
   import PetScene from '$lib/pet/PetScene.svelte';
-  import RiceFeast from '$lib/pet/RiceFeast.svelte';
+  import RiceFeastVideo from '$lib/pet/RiceFeastVideo.svelte';
   import ThemeGlyph from '$lib/pet/ThemeGlyph.svelte';
   import {
     moodPackMode,
@@ -101,8 +101,8 @@
     rest: 3200,
     pat: 1200,
   };
-  /** How long the DeepSeek rice cutscene stays on screen. */
-  const FEAST_MS = 6000;
+  /** One loop of the H3 rice clip (5.17 s), rounded to the sprite loop. */
+  const FEAST_MS = 5200;
 
   interface ChatMessage {
     id: number;
@@ -1091,7 +1091,7 @@
         </span>
       {:else if showFeast}
         <span class="feast-art">
-          <RiceFeast active label={feastLabel} />
+          <RiceFeastVideo active label={feastLabel} />
         </span>
       {:else if bundledImage}
         <img

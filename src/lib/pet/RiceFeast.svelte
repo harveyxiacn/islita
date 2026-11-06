@@ -30,7 +30,15 @@
   const GRAINS = Array.from({ length: 8 }, (_, index) => index);
 </script>
 
-<div class="feast" class:active role="img" aria-label={label} data-testid="rice-feast">
+<div
+  class="feast"
+  class:active
+  role="img"
+  aria-label={label}
+  data-testid="rice-feast"
+  data-kind="cutout"
+  data-src={src}
+>
   <span class="warmth" aria-hidden="true"></span>
   <img class="rice-fish" {src} alt="" draggable="false" />
 
