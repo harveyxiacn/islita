@@ -4,6 +4,7 @@
 // `./pet`. This module only knows which sprite belongs to a skin/form/mode and
 // how to repair the small position record kept in the pet window's own
 // localStorage. Keeping it DOM-free makes both testable.
+import type { PetAnimation } from './animations';
 import type { DeepSeekForm, PetAction, PetSkin } from './pet';
 
 /** Label of the predefined window in `tauri.conf.json`. */
@@ -13,7 +14,17 @@ export const PET_POSITION_KEY = 'island.pet.desktop.position';
 /** Logical size at `settings.scale = 1`; must match `window/pet.rs`. */
 export const PET_WINDOW_SIZE = { width: 240, height: 300 } as const;
 
-export type PetDesktopMode = 'idle' | 'walk' | 'sleep' | 'happy' | 'drag';
+export type PetDesktopMode =
+  | 'idle'
+  | 'walk'
+  | 'run'
+  | 'jump'
+  | 'fall'
+  | 'eat'
+  | 'sleep'
+  | 'happy'
+  | 'sad'
+  | 'drag';
 
 export interface PetDesktopArt {
   idle: string;
@@ -57,9 +68,63 @@ export function desktopArt(skin: PetSkin, form: DeepSeekForm): PetDesktopArt | n
   return null;
 }
 
+/**
+ * Static art for skins without generated performances. The extra modes borrow
+ * the closest existing frame; Pick 2 packs only need one picture per mood.
+ */
 export function artForMode(art: PetDesktopArt | null, mode: PetDesktopMode): string | null {
   if (!art) return null;
-  return art[mode];
+  switch (mode) {
+    case 'idle':
+    case 'walk':
+    case 'sleep':
+    case 'happy':
+    case 'drag':
+      return art[mode];
+    case 'run':
+      return art.walk;
+    case 'jump':
+    case 'eat':
+      return art.happy;
+    case 'fall':
+      return art.drag;
+    case 'sad':
+      return art.sleep;
+  }
+}
+
+/**
+ * The H3 performance that expresses a desktop mode. Every mode has a clip, so
+ * an animated pet never falls back to a frozen frame; dragging flails through
+ * the falling clip.
+ */
+export function animationForMode(mode: PetDesktopMode): PetAnimation {
+  switch (mode) {
+    case 'walk':
+      return 'walk';
+    case 'run':
+      return 'run';
+    case 'jump':
+      return 'jump';
+    case 'fall':
+    case 'drag':
+      return 'fall';
+    case 'eat':
+      return 'eat';
+    case 'sleep':
+      return 'sleep';
+    case 'happy':
+      return 'happy';
+    case 'sad':
+      return 'sad';
+    case 'idle':
+      return 'idle';
+  }
+}
+
+/** Jump is a single hop; every other performance loops. */
+export function animationLoops(clip: PetAnimation): boolean {
+  return clip !== 'jump';
 }
 
 export interface PetDesktopPosition {
@@ -70,10 +135,27 @@ export interface PetDesktopPosition {
 /** Payload of the backend's `pet-motion` event. */
 export interface PetMotion {
   moving: boolean;
+  running: boolean;
   dir: number;
   falling: boolean;
   x: number;
   y: number;
+}
+
+/** Repair a `pet-motion` payload from an older backend. */
+export function normaliseMotion(raw: unknown): PetMotion | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.x !== 'number' || typeof value.y !== 'number') return null;
+  if (!Number.isFinite(value.x) || !Number.isFinite(value.y)) return null;
+  return {
+    moving: value.moving === true,
+    running: value.running === true,
+    dir: typeof value.dir === 'number' && Number.isFinite(value.dir) ? value.dir : 0,
+    falling: value.falling === true,
+    x: value.x,
+    y: value.y,
+  };
 }
 
 /** Parse the last window position; invalid values are simply absent. */

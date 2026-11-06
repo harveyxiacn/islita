@@ -25,7 +25,7 @@
     advancePet,
     applyAction,
     createDefaultPet,
-    hasRiceFeast,
+    hasPetAnimations,
     parsePetState,
     petStatus,
     sanitizeName,
@@ -72,9 +72,15 @@
   } from '$lib/api';
   import Mochi from '$lib/pet/Mochi.svelte';
   import PackSprite from '$lib/pet/PackSprite.svelte';
+  import PetFilm from '$lib/pet/PetFilm.svelte';
   import PetScene from '$lib/pet/PetScene.svelte';
-  import RiceFeastVideo from '$lib/pet/RiceFeastVideo.svelte';
+  import SleepZzz from '$lib/pet/SleepZzz.svelte';
   import ThemeGlyph from '$lib/pet/ThemeGlyph.svelte';
+  import {
+    animationLabelKey,
+    animationMs,
+    type PetAnimation,
+  } from '$lib/pet/animations';
   import {
     moodPackMode,
     packIconPath,
@@ -101,8 +107,9 @@
     rest: 3200,
     pat: 1200,
   };
-  /** One loop of the H3 rice clip (5.17 s), rounded to the sprite loop. */
-  const FEAST_MS = 5200;
+  /** One pass of the H3 eat clip at its playback rate. */
+  const FEAST_MS = animationMs('eat');
+  const JUMP_MS = animationMs('jump');
 
   interface ChatMessage {
     id: number;
@@ -160,7 +167,9 @@
   let reacting = $state(false);
   /** The rice cutscene is showing; the action itself is already applied. */
   let feasting = $state(false);
+  let jumping = $state(false);
   let feastTimer: ReturnType<typeof setTimeout> | null = null;
+  let jumpTimer: ReturnType<typeof setTimeout> | null = null;
   let cooldowns = $state<Record<PetAction, boolean>>({
     feed: false,
     play: false,
@@ -228,10 +237,20 @@
   const speechText = $derived(tDyn(sayKey(voice, situation), { name: pet.name }));
   const nextXp = $derived(xpForNextLevel(pet.level));
   const sprite = $derived(pet.sprite);
-  /** Bundled DeepSeek chibi art only; a sprite or pack keeps its own look. */
-  const feastable = $derived(hasRiceFeast(pet));
-  const showFeast = $derived(feasting && feastable);
-  const feastLabel = $derived(t('plugin.pet.rice.eating', { name: pet.name }));
+  /** Bundled DeepSeek chibi only; a sprite or pack keeps its own look. */
+  const animatable = $derived(hasPetAnimations(pet));
+  /** What the H3 player shows right now; no player for sprites or packs. */
+  const animClip = $derived.by((): PetAnimation => {
+    if (feasting) return 'eat';
+    if (jumping) return 'jump';
+    if (reaction === 'rest') return 'sleep';
+    if (reaction === 'pat' || reaction === 'play') return 'happy';
+    if (status === 'hungry' || situation === 'critical' || situation === 'providerDown') {
+      return 'sad';
+    }
+    return 'idle';
+  });
+  const animLabel = $derived(tDyn(animationLabelKey(animClip), { name: pet.name }));
   const bundledImage = $derived(
     sprite
       ? null
@@ -355,9 +374,9 @@
     }, ACTION_COOLDOWN_MS[action]);
   }
 
-  /** Restart the six-second DeepSeek rice cutscene, if this pet can show it. */
+  /** Restart the five-second DeepSeek rice performance, if this pet has films. */
   function startFeast() {
-    if (!hasRiceFeast(pet)) return;
+    if (!hasPetAnimations(pet)) return;
     feasting = true;
     if (feastTimer) clearTimeout(feastTimer);
     feastTimer = setTimeout(() => {
@@ -372,6 +391,25 @@
       feastTimer = null;
     }
     feasting = false;
+  }
+
+  /** The hop is a one-shot; an idle fish is drawn again afterwards. */
+  function startJump() {
+    if (!hasPetAnimations(pet)) return;
+    jumping = true;
+    if (jumpTimer) clearTimeout(jumpTimer);
+    jumpTimer = setTimeout(() => {
+      jumpTimer = null;
+      jumping = false;
+    }, JUMP_MS);
+  }
+
+  function stopJump() {
+    if (jumpTimer) {
+      clearTimeout(jumpTimer);
+      jumpTimer = null;
+    }
+    jumping = false;
   }
 
   function perform(action: PetAction) {
@@ -391,6 +429,7 @@
       persistNow('feed');
       markSaved();
     } else {
+      if (action === 'play') startJump();
       scheduleSave();
     }
   }
@@ -416,6 +455,7 @@
     // Choosing a bundled skin deliberately leaves an imported pack.
     pet = { ...advancePet(pet, now).state, skin, name, packId: null, lastSeen: now };
     stopFeast();
+    stopJump();
     clearReaction();
     error = null;
     packError = null;
@@ -436,6 +476,7 @@
     const now = Date.now();
     pet = { ...advancePet(pet, now).state, deepseekForm: form, lastSeen: now };
     stopFeast();
+    stopJump();
     clearReaction();
     error = null;
     scheduleSave();
@@ -1021,6 +1062,10 @@
         clearTimeout(feastTimer);
         feastTimer = null;
       }
+      if (jumpTimer) {
+        clearTimeout(jumpTimer);
+        jumpTimer = null;
+      }
       for (const action of ACTIONS) {
         const timer = cooldownTimers[action.id];
         if (timer) clearTimeout(timer);
@@ -1048,7 +1093,7 @@
     </button>
   </header>
 
-  <div class="scene" data-status={status} data-pet-theme={theme}>
+  <div class="scene" class:filming={animatable} data-status={status} data-pet-theme={theme}>
     <PetScene theme={theme} />
     <p
       class="reaction"
@@ -1062,6 +1107,7 @@
     <button
       class="mascot-button"
       class:reacting
+      class:filming={animatable}
       type="button"
       onclick={() => perform('pat')}
       disabled={cooldowns.pat}
@@ -1089,9 +1135,10 @@
             level={pet.level}
           />
         </span>
-      {:else if showFeast}
-        <span class="feast-art">
-          <RiceFeastVideo active label={feastLabel} />
+      {:else if animatable}
+        <span class="film-art" class:leaping={animClip === 'jump'}>
+          <PetFilm clip={animClip} label={animLabel} once={animClip === 'jump'} />
+          <SleepZzz active={animClip === 'sleep'} />
         </span>
       {:else if bundledImage}
         <img
@@ -1724,6 +1771,12 @@
     overflow: hidden;
   }
 
+  /* The generated film is transparent and has headroom for the jump, so the
+     scene grows rather than the fish shrinking to fit the sticker-sized box. */
+  .scene.filming {
+    height: 10.5rem;
+  }
+
   .reaction {
     position: absolute;
     top: 0.5rem;
@@ -1757,6 +1810,11 @@
     transform-origin: 50% 88%;
   }
 
+  .mascot-button.filming {
+    width: 7.8rem;
+    height: 7.8rem;
+  }
+
   .mascot-button:hover {
     filter: brightness(1.035);
   }
@@ -1786,13 +1844,38 @@
     height: 5.5rem;
   }
 
-  /* The cutout is square and transparent, so it floats over the scene instead
+  /* The film is square and transparent, so it floats over the scene instead
      of sitting in a white sticker card like the static moods. */
-  .feast-art {
+  .film-art {
+    position: relative;
     display: block;
-    width: 5.6rem;
-    height: 5.6rem;
+    width: 7.8rem;
+    height: 7.8rem;
     margin-bottom: 0.1rem;
+  }
+
+  /* The H3 hop stays centred; a small lift sells the jump in the panel. */
+  .film-art.leaping {
+    animation: pet-small-leap 2.5s var(--ease-out, ease-out) 1;
+  }
+
+  @keyframes pet-small-leap {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    14% {
+      transform: translateY(2px) scale(0.99, 0.98);
+    }
+    38% {
+      transform: translateY(-7px) scale(1.01, 1.02);
+    }
+    56% {
+      transform: translateY(-9px);
+    }
+    76% {
+      transform: translateY(0) scale(0.995, 0.985);
+    }
   }
 
   .pack-art {
@@ -2858,6 +2941,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .sprite-strip,
+    .film-art.leaping,
     .mascot-button.reacting {
       animation: none !important;
     }

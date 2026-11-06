@@ -1,8 +1,8 @@
 <!--
   The detached pet's rice bowl. [FRONTEND]
 
-  The island panel gets the full cutscene (RiceFeast); the small transparent
-  desktop window gets a prop instead: a bowl at the pet's feet, steam, and a
+  The bundled DeepSeek chibi has its own generated eat performance; every
+  other skin gets this prop instead: a bowl at the pet's feet, steam, and a
   few grains rising towards its mouth while it chews. Nothing here is
   interactive and nothing blocks the pet's own pointer handling.
 -->

@@ -25,11 +25,15 @@ pub const BASE_H: f64 = 300.0;
 pub const MARGIN: f64 = 8.0;
 /// Horizontal wander speed, logical px per second.
 pub const SPEED: f64 = 34.0;
+/// A run segment covers ground this much faster than a walk.
+pub const RUN_MULTIPLIER: f64 = 2.2;
+/// Share of movement segments that become a run instead of a walk.
+pub const RUN_CHANCE: f64 = 0.35;
 /// Falling speed after the pet is dropped above the work-area floor.
 pub const FALL_SPEED: f64 = 220.0;
 /// Wander loop period.
 pub const TICK_MS: u64 = 33;
-/// Event carrying `{ moving, dir, falling, x, y }` to the pet page.
+/// Event carrying `{ moving, running, dir, falling, x, y }` to the pet page.
 pub const MOTION_EVENT: &str = "pet-motion";
 /// Minimum quiet time after a drag before the pet wanders off again.
 pub const DRAG_SETTLE: Duration = Duration::from_millis(600);
@@ -40,6 +44,8 @@ static LOOP_STARTED: AtomicBool = AtomicBool::new(false);
 #[serde(rename_all = "camelCase")]
 pub struct Motion {
     pub moving: bool,
+    /// A run segment: faster than a walk, so the page plays the run clip.
+    pub running: bool,
     /// `-1` left, `1` right, `0` no horizontal movement.
     pub dir: i32,
     pub falling: bool,
@@ -56,6 +62,8 @@ pub struct PetWindowState {
     pub size: (f64, f64),
     pub dir: i32,
     pub moving: bool,
+    /// The current movement segment is a run.
+    pub running: bool,
     pub falling: bool,
     /// The pet page has loaded and may be shown.
     pub ready: bool,
@@ -80,6 +88,7 @@ impl Default for PetWindowState {
             size: (BASE_W, BASE_H),
             dir: 1,
             moving: false,
+            running: false,
             falling: false,
             ready: false,
             roam_allowed: true,
@@ -192,6 +201,7 @@ fn publish(app: &AppHandle, state: &mut PetWindowState, motion: Motion, force: b
         None => true,
         Some(previous) => {
             previous.moving != motion.moving
+                || previous.running != motion.running
                 || previous.dir != motion.dir
                 || previous.falling != motion.falling
                 || (previous.x - motion.x).abs() > 0.4
@@ -370,8 +380,10 @@ pub fn set_dragging(app: &AppHandle, dragging: bool) {
         pet.moving = false;
         pet.falling = false;
     }
+    pet.running = false;
     let motion = Motion {
         moving: false,
+        running: false,
         dir: 0,
         falling: false,
         x: pet.pos.map(|p| p.0).unwrap_or(0.0),
@@ -398,8 +410,10 @@ pub fn set_roaming(app: &AppHandle, allowed: bool) {
         pet.falling = false;
         pet.dir = 0;
     }
+    pet.running = false;
     let motion = Motion {
         moving: false,
+        running: false,
         dir: 0,
         falling: false,
         x: pet.pos.map(|p| p.0).unwrap_or(0.0),
@@ -449,12 +463,14 @@ pub fn move_by(app: &AppHandle, dx: f64, dy: f64) {
     };
     pet.pos = Some((x, y));
     pet.moving = false;
+    pet.running = false;
     pet.falling = false;
     pet.dir = 0;
     pet.pause_until = Instant::now() + DRAG_SETTLE;
     set_position(&win, (x, y), dpi);
     let motion = Motion {
         moving: false,
+        running: false,
         dir: 0,
         falling: false,
         x,
@@ -491,17 +507,20 @@ fn step(app: &AppHandle, dt: f64) {
     let visible = win.is_visible().unwrap_or(false);
     if !visible || !settings.pet_on_desktop {
         pet.moving = false;
+        pet.running = false;
         pet.falling = false;
         return;
     }
     let can_move = settings.pet_roam && pet.roam_allowed && !pet.dragging;
     if !can_move {
-        if pet.moving || pet.falling || pet.dir != 0 {
+        if pet.moving || pet.running || pet.falling || pet.dir != 0 {
             pet.moving = false;
+            pet.running = false;
             pet.falling = false;
             pet.dir = 0;
             let motion = Motion {
                 moving: false,
+                running: false,
                 dir: 0,
                 falling: false,
                 x: pet.pos.map(|p| p.0).unwrap_or(0.0),
@@ -520,6 +539,7 @@ fn step(app: &AppHandle, dt: f64) {
     let now = Instant::now();
     if now < pet.pause_until {
         pet.moving = false;
+        pet.running = false;
         return;
     }
     let pos = pet.pos.unwrap_or_else(|| default_pos(app, size));
@@ -548,10 +568,12 @@ fn step(app: &AppHandle, dt: f64) {
         }
         pet.falling = falling;
         pet.moving = false;
+        pet.running = false;
         pet.pos = Some((x, y));
         set_position(&win, (x, y), dpi);
         let motion = Motion {
             moving: false,
+            running: false,
             dir: pet.dir,
             falling,
             x,
@@ -566,6 +588,7 @@ fn step(app: &AppHandle, dt: f64) {
         // 40 % of segments end in a pause, the rest turn around.
         if rand01() < 0.4 {
             pet.moving = false;
+            pet.running = false;
             pet.dir = 0;
             pet.pause_until =
                 now + Duration::from_secs(2) + Duration::from_millis((rand01() * 4000.0) as u64);
@@ -577,6 +600,8 @@ fn step(app: &AppHandle, dt: f64) {
     }
     if !pet.moving && now >= pet.pause_until {
         pet.moving = true;
+        // About a third of the trips are a run; the page swaps to the run clip.
+        pet.running = rand01() < RUN_CHANCE;
         pet.dir = if pet.dir == 0 {
             if rand01() < 0.5 {
                 -1
@@ -590,7 +615,12 @@ fn step(app: &AppHandle, dt: f64) {
             now + Duration::from_secs(3) + Duration::from_millis((rand01() * 4000.0) as u64);
     }
     if pet.moving {
-        x += pet.dir as f64 * SPEED * dt;
+        let speed = if pet.running {
+            SPEED * RUN_MULTIPLIER
+        } else {
+            SPEED
+        };
+        x += pet.dir as f64 * speed * dt;
         if x <= min_x {
             x = min_x;
             pet.dir = 1;
@@ -610,6 +640,7 @@ fn step(app: &AppHandle, dt: f64) {
     }
     let motion = Motion {
         moving: pet.moving,
+        running: pet.moving && pet.running,
         dir: if pet.moving { pet.dir } else { 0 },
         falling: false,
         x,
@@ -652,6 +683,13 @@ mod tests {
         let (x, y) = clamp_to(&mon(), (360.0, 450.0), 1900.0, 1070.0);
         assert_eq!(x, 1920.0 - 360.0 - MARGIN);
         assert_eq!(y, 1080.0 - 450.0 - MARGIN);
+    }
+
+    #[test]
+    fn run_segments_are_faster_than_walks_and_occasional() {
+        const { assert!(RUN_MULTIPLIER > 1.0) };
+        const { assert!(RUN_CHANCE > 0.0 && RUN_CHANCE < 1.0) };
+        const { assert!(SPEED * RUN_MULTIPLIER <= FALL_SPEED) };
     }
 
     #[test]

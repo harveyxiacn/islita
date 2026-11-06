@@ -31,20 +31,29 @@ those four; the desktop pet has its own captures below.
 ### Desktop pet
 
 <p align="center">
-  <img src="docs/screenshots/pet-rice-feast.gif" alt="DeepSeek desktop pet eating a bowl of rice" width="280">
-  <img src="docs/screenshots/pet-island-feast-panel.png" alt="Desktop pet panel with the rice feast and bowl count" width="46%">
+  <img src="docs/screenshots/pet-animations-cutout.png" alt="Nine transparent DeepSeek performances: idle, walk, run, jump, fall, eat, sleep, happy and sad" width="420">
 </p>
 <p align="center">
-  <img src="docs/screenshots/pet-desktop-feast-scene.png" alt="Desktop pet on a dark desktop" width="62%">
+  <img src="docs/screenshots/pet-walk-cutout.webp" alt="DeepSeek walking" width="150">
+  <img src="docs/screenshots/pet-eat-cutout.webp" alt="DeepSeek eating a bowl of white rice" width="150">
+  <img src="docs/screenshots/pet-sleep-zzz-cutout.png" alt="DeepSeek asleep with floating ZZZ" width="150">
+</p>
+<p align="center">
+  <img src="docs/screenshots/pet-island-panel.png" alt="Desktop pet panel feeding the DeepSeek fish" width="380">
 </p>
 
-The rice feast is a **MiniMax H3** image-to-video generation from the supplied
-DeepSeek chibi card. The app ships a muted 5.2 s clip for the island panel and
-the same clip chroma-keyed into a 60-frame transparent strip for the desktop
-window, so the pet keeps its wallpaper and no model, GPU or network is used at
-runtime. The pure-CSS cutout remains the reduced-motion and codec fallback.
-[Source H3 clip, with audio](docs/media/deepseek-feast-h3.mp4) ·
-[screen recording of the desktop window](docs/media/pet-rice-feast-demo.mp4).
+The DeepSeek chibi is drawn by nine **MiniMax H3** image-to-video performances —
+idle, walk, run, jump, fall, eat, sleep, happy and sad. Each is keyed off a green
+screen into a 60-frame transparent strip and played at its native 12–24 fps; the
+desktop window uses walk/run/fall while roaming and adds a real leap to jump,
+while the island panel uses the same eat, sleep, happy and sad states. One shared
+crop keeps the fish the same size and its feet on the same floor when the clip
+changes. Sleeping adds a DOM `ZZZ` overlay because H3 cannot draw text reliably.
+Nothing calls a model, GPU or network at runtime, and reduced motion shows the
+poster frame. The fish calls tokens and quota **white rice (白饭)**: a bowl is a
+spend, and near the limit it warns that the rice is almost gone. See
+[docs/plans/desktop-pet.md](docs/plans/desktop-pet.md) for the generation and
+packing pipeline.
 
 ## What it is
 
@@ -85,7 +94,7 @@ the original edge bar.
 | Dynamic island | Opt-in (`island: true`): a rounded capsule at the top centre of the monitor. `islandIdle.providers` / `islandIdle.plugins` choose up to six rings and six plugin icons for the idle capsule (empty = the busiest provider and a count), then it morphs into a five-column board with the full plugin rail (providers, service status, calendar reminders, mail, WeChat, completed tasks, sticky notes, recent sessions, music + LRC, focus timer, desktop pet, file drop) and animated panels. Settings → Plugins switches any module off (its data is kept, and new plugins default on). `islandAutoHide` leaves only a thin top-edge handle, reveals the capsule on hover and expands the board after a short dwell. See [docs/ISLAND.md](docs/ISLAND.md) |
 | Island plugins | Built-in panels. Calendar imports a local `.ics` (with simple recurrence expansion); mail reads headers from a local `.eml`/Maildir folder or an opt-in cloud account; the Windows-only WeChat panel mirrors the visible conversation list read-only through UI Automation; **Sticky notes** keeps a board of up to 20 autosaved notes (4,000 characters each); **Music** plays a local playlist with synced LRC lyrics, from picked files or a whole folder, and keeps playing after the panel closes; file drop copies regular files into a private dropbox. Local mail, a soon-starting event and unread pet speech show a badge or dot on the rail. Message bodies are never read and nothing is uploaded. |
 | Service status | Reads the official Claude and OpenAI Statuspage summaries (`status.claude.com`, `status.openai.com`) while the panel is open: indicator, description, last update and up to three recent incidents. The backend caches the combined report for 60 s; the panel refreshes every 5 minutes or on demand. No account or credential is sent; the request only fetches the public summary. |
-| Desktop pet | A local-only companion in the island, and optionally a detached window on the desktop. Three bundled skins — the original **Mochi** mascot, **DeepSeek 大肥鱼** with switchable Q-version (Q版) and transformed (变身) forms, and **Hachiware** — each with its own hand-drawn scene (**Matcha picnic**, **Deep-sea lantern**, **Aquarium**; `auto` follows the character), plus needs, XP and levels, four interactions and offline decay capped at 12 h. It comments on your quota in the panel and beside a ring's popover, and its rail icon shows a dot when a threshold is crossed, a window resets, a provider goes down or a CLI turn finishes. `petOnDesktop` (off by default) shows the full-body sprite in a transparent, always-on-top window that can be dragged anywhere (click to pet, right-click for feed/play/rest and settings) and, with `petRoam`, wanders along the taskbar. A custom portrait or 4:1 four-frame strip (PNG/WebP/GIF, max 2 MB) replaces the bundled art. **DyberPet-format character packs** can be imported at runtime from a role folder and played with their own frames, directional walks, random idle acts and pat reactions — no GPL code or assets are bundled ([details](docs/PET-PACKS.md)). Feeding the Q-version DeepSeek plays a **MiniMax H3** rice-feast clip: a muted 5.2 s video in the island panel and a chroma-keyed 60-frame strip in the transparent desktop window, with the CSS cutout as the reduced-motion/codec fallback. A built-in **pet assistant** answers quota, reset, cost and pet questions from local data with no model installed; an optional loopback-only local model (Ollama, LM Studio, llama.cpp) can rephrase and extend the answers ([details](docs/PET-ASSISTANT.md)). State stays in this device's plugin storage. |
+| Desktop pet | A local-only companion in the island, and optionally a detached window on the desktop. Three bundled skins — the original **Mochi** mascot, **DeepSeek 大肥鱼** with switchable Q-version (Q版) and transformed (变身) forms, and **Hachiware** — each with its own hand-drawn scene (**Matcha picnic**, **Deep-sea lantern**, **Aquarium**; `auto` follows the character), plus needs, XP and levels, four interactions and offline decay capped at 12 h. It comments on your quota in the panel and beside a ring's popover, and its rail icon shows a dot when a threshold is crossed, a window resets, a provider goes down or a CLI turn finishes. `petOnDesktop` (off by default) shows the full-body sprite in a transparent, always-on-top window that can be dragged anywhere (click to pet, right-click for feed/play/rest and settings) and, with `petRoam`, wanders along the taskbar. A custom portrait or 4:1 four-frame strip (PNG/WebP/GIF, max 2 MB) replaces the bundled art. **DyberPet-format character packs** can be imported at runtime from a role folder and played with their own frames, directional walks, random idle acts and pat reactions — no GPL code or assets are bundled ([details](docs/PET-PACKS.md)). The Q-version DeepSeek is animated by nine **MiniMax H3** performances (idle, walk, run, jump, fall, eat, sleep with ZZZ, happy, sad), keyed into 60-frame transparent strips and shared by the island panel and the desktop window; tokens and quota are **white rice (白饭)**, with lines that warn when the bowl is nearly empty. Reduced motion shows the poster frame. A built-in **pet assistant** answers quota, reset, cost and pet questions from local data with no model installed; an optional loopback-only local model (Ollama, LM Studio, llama.cpp) can rephrase and extend the answers ([details](docs/PET-ASSISTANT.md)). State stays in this device's plugin storage. |
 | Cloud mail (opt-in) | In the Mail panel's **Accounts** tab, connect Gmail or Outlook with OAuth, or any IMAP host with an app password. Requests read-only mail access and lists unread inbox headers only. Tokens and passwords stay in the OS keychain, never in settings; removing an account deletes them. OAuth uses your own Google/Microsoft client registration, explained in the setup form. |
 | Drag to move | Drag the bar anywhere: it snaps to the nearest screen edge of the monitor you drop it on and remembers its position along that edge |
 | Auto-hide | The bar collapses to a thin handle when you move the pointer away and expands on hover. The collapsed handle is segmented per provider and coloured by severity |
@@ -529,18 +538,25 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 ### 桌面宠物
 
 <p align="center">
-  <img src="docs/screenshots/pet-rice-feast.gif" alt="DeepSeek 桌面宠物吃白饭" width="280">
-  <img src="docs/screenshots/pet-island-feast-panel.png" alt="桌面宠物面板：吃白饭与饭量计数" width="46%">
+  <img src="docs/screenshots/pet-animations-cutout.png" alt="DeepSeek 大肥鱼的九个透明动作：待机、走动、跑动、跳跃、掉落、吃白饭、睡觉、开心、悲伤" width="420">
 </p>
 <p align="center">
-  <img src="docs/screenshots/pet-desktop-feast-scene.png" alt="深色桌面上的桌面宠物" width="62%">
+  <img src="docs/screenshots/pet-walk-cutout.webp" alt="DeepSeek 大肥鱼走动" width="150">
+  <img src="docs/screenshots/pet-eat-cutout.webp" alt="DeepSeek 大肥鱼吃白饭" width="150">
+  <img src="docs/screenshots/pet-sleep-zzz-cutout.png" alt="DeepSeek 大肥鱼睡觉，头顶飘着 ZZZ" width="150">
+</p>
+<p align="center">
+  <img src="docs/screenshots/pet-island-panel.png" alt="桌面宠物面板：喂 DeepSeek 大肥鱼吃白饭" width="380">
 </p>
 
-吃白饭过场由 **MiniMax H3** 图生视频生成：灵动岛内播放静音 5.2 秒视频，
-透明桌面窗使用同一段视频抠像后的 60 帧序列，保留桌面壁纸；运行时不调用模型、
-不占 GPU、不联网。减少动态效果或解码失败时回退到纯 CSS 剪影。
-[H3 原始视频（含音频）](docs/media/deepseek-feast-h3.mp4) ·
-[桌面窗录屏](docs/media/pet-rice-feast-demo.mp4)。
+DeepSeek 大肥鱼的九个动作——待机、走动、跑动、跳跃、掉落、吃白饭、睡觉、开心、悲伤——
+全部由 **MiniMax H3** 图生视频生成，绿幕抠像后存成 60 帧透明序列，按每段 12–24 fps
+的原速播放。桌面窗在散步、奔跑、掉落时切换对应动作，跳跃还有真实的起跳位移；灵动岛面板
+围绕同一状态播放吃白饭、睡觉、开心和悲伤。所有动作共用一个裁切框，切换时鱼的大小和
+脚底位置不变。睡觉的 `ZZZ` 由 DOM 叠加，因为 H3 画不准文字；运行时不调用模型、
+不占 GPU、不联网，减少动态效果时显示首帧。大肥鱼把 token 和额度叫**白饭**：喂一碗
+就是花掉一份额度，额度快用完时它会说“白饭要被吃光了，给我留一口！”。生成与打包流程见
+[docs/plans/desktop-pet.md](docs/plans/desktop-pet.md)。
 
 ## 这是什么
 
@@ -568,7 +584,7 @@ MIT © Harvey Xia. See [LICENSE](LICENSE).
 | 灵动岛 | 可选（`island: true`）：在显示器顶部中央显示圆角胶囊。`islandIdle.providers` / `islandIdle.plugins` 选择空闲时最多 6 个圆环和 6 个插件图标（留空则显示最忙服务商与数量）；悬停或键盘聚焦后平滑变形成两行面板，并展开完整插件栏（服务商、服务状态、日历提醒、邮件、微信、已完成任务、便利贴、最近会话、音乐 + LRC、专注计时、桌面宠物、文件中转站）与带过场动画的面板。“设置 → 插件”可以关闭任意模块（数据保留，新插件默认开启）。开启 `islandAutoHide` 后空闲时只留顶边细把手，悬停显示胶囊，停留片刻再展开面板。详见 [docs/ISLAND.md](docs/ISLAND.md) |
 | 灵动岛插件 | 内置面板。日历导入本地 `.ics`（支持简单重复规则）；邮件可读取本地 `.eml`/Maildir 的邮件头，也可选择连接云端账户；微信面板（仅 Windows）通过 UI Automation 只读镜像当前可见的会话列表；**便利贴**提供最多 20 张自动保存的便签（每张 4000 字）；**音乐**播放本地播放列表并显示 LRC 同步歌词，可从文件或整个文件夹添加，关闭面板后继续播放；文件中转站把普通文件复制到本机私密目录。本地邮件、即将开始的日程和宠物未读发言会在插件栏显示角标或圆点。始终不读取正文，也不会上传任何内容。 |
 | 服务状态 | 面板打开时读取 Claude 与 OpenAI 官方状态页（`status.claude.com`、`status.openai.com`）：总体状态、说明、更新时间与最近最多 3 条事件。后端缓存合并结果 60 秒，面板每 5 分钟或手动刷新。不需要账号或凭据，只读取公开摘要。 |
-| 桌面宠物 | 既能住在灵动岛里，也能单独放到桌面。三套内置形象——原创**麻薯**、**DeepSeek 大肥鱼**（可切换 **Q版** 与 **变身** 两种形态）与**小八**，各有专属手绘场景（**抹茶野餐**、**深海提灯**、**水族箱**；`auto` 跟随角色）；带饱腹/心情/精力、经验与等级、四种互动，离线衰减最多计 12 小时。它会在面板和圆环弹层里点评额度，插件栏图标在越过阈值、窗口重置、服务商掉线或 CLI 一轮任务完成时显示未读圆点。开启 `petOnDesktop`（默认关闭）后，全身立绘会出现在透明置顶小窗里，可拖到桌面任意位置：单击摸摸，右键喂食/玩耍/休息、切换散步或打开设置；`petRoam` 打开时它会沿着任务栏慢慢散步。可导入一张竖版图片或 4:1 四帧条（PNG/WebP/GIF，最大 2 MB）替换内置形象；也可在运行时导入 **DyberPet 格式角色包**，使用角色自带的逐帧动画、左右行走、随机待机动作和摸摸反应——不捆绑任何 GPL 代码或素材（[详情](docs/PET-PACKS.md)）。Q 版 DeepSeek 的吃白饭过场由 **MiniMax H3** 图生视频生成：灵动岛播放静音 5.2 秒视频，桌面窗使用抠像后的 60 帧透明序列（减少动态效果/解码失败时回退 CSS 剪影）。内置**宠物助手**无需模型即可根据本机数据回答额度、重置、费用和宠物状态问题；也可选接本机回环地址上的小模型（Ollama、LM Studio、llama.cpp）润色和扩展回答（[详情](docs/PET-ASSISTANT.md)）。状态只保存在本机插件存储中。 |
+| 桌面宠物 | 既能住在灵动岛里，也能单独放到桌面。三套内置形象——原创**麻薯**、**DeepSeek 大肥鱼**（可切换 **Q版** 与 **变身** 两种形态）与**小八**，各有专属手绘场景（**抹茶野餐**、**深海提灯**、**水族箱**；`auto` 跟随角色）；带饱腹/心情/精力、经验与等级、四种互动，离线衰减最多计 12 小时。它会在面板和圆环弹层里点评额度，插件栏图标在越过阈值、窗口重置、服务商掉线或 CLI 一轮任务完成时显示未读圆点。开启 `petOnDesktop`（默认关闭）后，全身立绘会出现在透明置顶小窗里，可拖到桌面任意位置：单击摸摸，右键喂食/玩耍/休息、切换散步或打开设置；`petRoam` 打开时它会沿着任务栏慢慢散步。可导入一张竖版图片或 4:1 四帧条（PNG/WebP/GIF，最大 2 MB）替换内置形象；也可在运行时导入 **DyberPet 格式角色包**，使用角色自带的逐帧动画、左右行走、随机待机动作和摸摸反应——不捆绑任何 GPL 代码或素材（[详情](docs/PET-PACKS.md)）。Q 版 DeepSeek 的九个动作（待机、走动、跑动、跳跃、掉落、吃白饭、睡觉带 ZZZ、开心、悲伤）由 **MiniMax H3** 图生视频生成，抠像成 60 帧透明序列，灵动岛与桌面窗共用；它把 token 和额度叫**白饭**，快用完时会说“白饭要被吃光了”。减少动态效果时显示首帧。内置**宠物助手**无需模型即可根据本机数据回答额度、重置、费用和宠物状态问题；也可选接本机回环地址上的小模型（Ollama、LM Studio、llama.cpp）润色和扩展回答（[详情](docs/PET-ASSISTANT.md)）。状态只保存在本机插件存储中。 |
 | 云端邮件（可选） | 在邮件面板的“云端账户”页，可以用 OAuth 连接 Gmail / Outlook，或使用应用专用密码连接任意 IMAP 服务器。只申请只读邮件权限，只列出收件箱未读邮件头。令牌和密码保存在系统钥匙串，不写入设置；移除账户时会一并删除。OAuth 使用你自己的 Google / Microsoft 客户端注册，设置表单内有步骤说明。 |
 | 拖拽移动 | 直接拖动侧栏：松手后吸附到所在显示器最近的一条边缘，并记住沿该边缘的位置 |
 | 自动隐藏 | 鼠标离开后收起为细条，悬停时自动展开；收起的把手按服务商分段，并按严重程度着色 |

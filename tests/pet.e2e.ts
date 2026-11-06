@@ -73,9 +73,11 @@ test('desktop pet opens with stats, switches skins/forms and reacts to feeding',
 
   await skins.getByRole('button', { name: 'DeepSeek' }).click();
   await expect(panel.locator('.name-text')).toHaveText('DeepSeek');
-  await expect(card).toHaveAttribute('data-skin', 'deepseek');
-  await expect(card).toHaveAttribute('data-form', 'chibi');
-  await expect(card).toHaveAttribute('src', /\/pet\/deepseek-chibi-happy\.webp$/);
+  // The bundled chibi is drawn by the H3 player, not by a sticker card.
+  const film = panel.getByTestId('pet-film');
+  await expect(film).toBeVisible();
+  await expect(film).toHaveAttribute('data-clip', 'idle');
+  await expect(film).toHaveAttribute('data-src', /\/pet\/animations\/idle-sheet\.webp$/);
 
   const forms = panel.getByRole('group', { name: 'Form' });
   await expect(forms.getByRole('button', { name: 'Q-version' })).toHaveAttribute(
@@ -83,25 +85,24 @@ test('desktop pet opens with stats, switches skins/forms and reacts to feeding',
     'true'
   );
   await forms.getByRole('button', { name: 'Transformed' }).click();
-  await expect(card).toHaveAttribute('data-form', 'transformed');
-  await expect(card).toHaveAttribute('src', /\/pet\/deepseek-transformed-happy\.webp$/);
+  const transformedCard = panel.locator('img.skin-card');
+  await expect(transformedCard).toHaveAttribute('data-form', 'transformed');
+  await expect(transformedCard).toHaveAttribute(
+    'src',
+    /\/pet\/deepseek-transformed-happy\.webp$/
+  );
   await forms.getByRole('button', { name: 'Q-version' }).click();
-  await expect(card).toHaveAttribute('src', /\/pet\/deepseek-chibi-happy\.webp$/);
+  await expect(film).toHaveAttribute('data-clip', 'idle');
 
   await panel.getByRole('button', { name: 'Feed', exact: true }).click();
-  await expect(panel.locator('.reaction')).toHaveText('Rice! One more bowl!');
+  await expect(panel.locator('.reaction')).toHaveText('White rice! One more bowl!');
   await expect(panel.getByRole('meter', { name: 'Fullness' })).toHaveAttribute(
     'aria-valuenow',
     '100'
   );
-  // The bundled DeepSeek chibi swaps the sticker card for the rice cutscene.
-  const feast = panel.getByTestId('rice-feast');
-  await expect(feast).toBeVisible();
-  await expect(feast).toHaveAttribute('data-kind', 'video');
-  await expect(feast.locator('video source').first()).toHaveAttribute(
-    'src',
-    /\/pet\/deepseek-feast\.webm$/
-  );
+  // Feeding swaps the idle loop for the generated eat performance.
+  await expect(film).toHaveAttribute('data-clip', 'eat');
+  await expect(film).toHaveAttribute('data-src', /\/pet\/animations\/eat-sheet\.webp$/);
   await expect(panel.locator('.meals-chip')).toHaveAttribute('aria-label', 'Bowls eaten: 1');
 
   // The detached window is opt-in; enabling it reveals the wander switch.

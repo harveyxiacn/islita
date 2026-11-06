@@ -272,10 +272,11 @@ export function petStatus(state: Pick<PetState, 'fullness' | 'mood' | 'energy'>)
 }
 
 /**
- * The rice-eating cutscene uses the bundled DeepSeek chibi artwork only.
- * A custom sprite or a DyberPet pack must keep showing its own art.
+ * The generated H3 performances (idle, walk, run, jump, fall, eat, sleep,
+ * happy, sad) use the bundled DeepSeek chibi artwork only. A custom sprite or
+ * a DyberPet pack must keep showing its own art.
  */
-export function hasRiceFeast(
+export function hasPetAnimations(
   state: Pick<PetState, 'skin' | 'deepseekForm' | 'sprite' | 'packId'>
 ): boolean {
   return (
@@ -285,3 +286,6 @@ export function hasRiceFeast(
     state.packId === null
   );
 }
+
+/** @deprecated Use `hasPetAnimations`; kept for callers from the feast-only days. */
+export const hasRiceFeast = hasPetAnimations;

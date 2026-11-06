@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
   DEEPSEEK_FORMS,
@@ -11,6 +11,7 @@ import {
   applyAction,
   createDefaultPet,
   grantXp,
+  hasPetAnimations,
   hasRiceFeast,
   isDeepSeekForm,
   isPetSkin,
@@ -19,6 +20,23 @@ import {
   sanitizeName,
   xpForNextLevel,
 } from '../src/lib/pet/pet';
+import {
+  PET_ANIMATION_CLIPS,
+  PET_ANIMATION_FRAMES,
+  animationFps,
+  animationMs,
+  animationPoster,
+  animationSrc,
+  isPetAnimation,
+} from '../src/lib/pet/animations';
+import {
+  animationForMode,
+  animationLoops,
+  artForMode,
+  desktopArt,
+  normaliseMotion,
+  type PetDesktopMode,
+} from '../src/lib/pet/desktop';
 import { PET_SKIN_OPTIONS, skinImage } from '../src/lib/pet/skins';
 import {
   MAX_SPRITE_BYTES,
@@ -155,12 +173,13 @@ test('meals count feeds only and are repaired on load', () => {
   expect(parsePetState({ meals: 'many' }, 0).meals).toBe(0);
 });
 
-test('the rice cutscene belongs to the bundled DeepSeek chibi only', () => {
+test('the generated performances belong to the bundled DeepSeek chibi only', () => {
   const pet = createDefaultPet(0, 'deepseek');
+  expect(hasPetAnimations(pet)).toBe(true);
   expect(hasRiceFeast(pet)).toBe(true);
-  expect(hasRiceFeast({ ...pet, deepseekForm: 'transformed' })).toBe(false);
-  expect(hasRiceFeast({ ...pet, skin: 'hachiware' })).toBe(false);
-  expect(hasRiceFeast({ ...pet, skin: 'mochi' })).toBe(false);
+  expect(hasPetAnimations({ ...pet, deepseekForm: 'transformed' })).toBe(false);
+  expect(hasPetAnimations({ ...pet, skin: 'hachiware' })).toBe(false);
+  expect(hasPetAnimations({ ...pet, skin: 'mochi' })).toBe(false);
 
   const sprite = parseStoredSprite({
     dataUrl: PNG,
@@ -170,8 +189,85 @@ test('the rice cutscene belongs to the bundled DeepSeek chibi only', () => {
     fileName: 'own.png',
   });
   if (!sprite) throw new Error('sprite fixture did not parse');
-  expect(hasRiceFeast({ ...pet, sprite })).toBe(false);
-  expect(hasRiceFeast({ ...pet, packId: 'kitty' })).toBe(false);
+  expect(hasPetAnimations({ ...pet, sprite })).toBe(false);
+  expect(hasPetAnimations({ ...pet, packId: 'kitty' })).toBe(false);
+});
+
+test('every desktop mode maps to one of the nine H3 clips', () => {
+  const modes: PetDesktopMode[] = [
+    'idle',
+    'walk',
+    'run',
+    'jump',
+    'fall',
+    'eat',
+    'sleep',
+    'happy',
+    'sad',
+    'drag',
+  ];
+  for (const mode of modes) {
+    const clip = animationForMode(mode);
+    expect(PET_ANIMATION_CLIPS, mode).toContain(clip);
+    expect(animationSrc(clip), mode).toBe(`/pet/animations/${clip}-sheet.webp`);
+    expect(animationPoster(clip), mode).toBe(`/pet/animations/${clip}-poster.webp`);
+  }
+  expect(animationForMode('drag')).toBe('fall');
+  expect(animationForMode('run')).toBe('run');
+  expect(animationLoops('jump')).toBe(false);
+  expect(animationLoops('idle')).toBe(true);
+  expect(isPetAnimation('eat')).toBe(true);
+  expect(isPetAnimation('dance')).toBe(false);
+});
+
+test('clip playback stays real-time and one pass is measurable', () => {
+  for (const clip of PET_ANIMATION_CLIPS) {
+    const fps = animationFps(clip);
+    expect(fps, clip).toBeGreaterThanOrEqual(12);
+    expect(fps, clip).toBeLessThanOrEqual(24);
+    expect(animationMs(clip), clip).toBeCloseTo((PET_ANIMATION_FRAMES / fps) * 1000, 6);
+  }
+  // The hop keeps the generated 24 fps so it finishes in 2.5 s, not 5 s.
+  expect(animationMs('jump')).toBe(2500);
+  expect(animationMs('run')).toBe(2500);
+  expect(animationMs('sleep')).toBe(5000);
+});
+
+test('every clip ships its transparent strip and poster', () => {
+  for (const clip of PET_ANIMATION_CLIPS) {
+    const sheet = path.join('static', animationSrc(clip));
+    const poster = path.join('static', animationPoster(clip));
+    expect(existsSync(sheet), sheet).toBe(true);
+    expect(existsSync(poster), poster).toBe(true);
+    expect(statSync(sheet).size, sheet).toBeGreaterThan(100_000);
+    expect(statSync(poster).size, poster).toBeGreaterThan(4_000);
+  }
+});
+
+test('static fallback art answers the new desktop modes', () => {
+  const art = desktopArt('hachiware', 'chibi');
+  if (!art) throw new Error('hachiware should have raster art');
+  expect(artForMode(art, 'run')).toBe(art.walk);
+  expect(artForMode(art, 'jump')).toBe(art.happy);
+  expect(artForMode(art, 'eat')).toBe(art.happy);
+  expect(artForMode(art, 'fall')).toBe(art.drag);
+  expect(artForMode(art, 'sad')).toBe(art.sleep);
+  expect(artForMode(art, 'walk')).toBe(art.walk);
+});
+
+test('motion payloads from an older backend are repaired', () => {
+  expect(normaliseMotion({ moving: true, dir: -1, falling: false, x: 3, y: 4 })).toEqual({
+    moving: true,
+    running: false,
+    dir: -1,
+    falling: false,
+    x: 3,
+    y: 4,
+  });
+  expect(normaliseMotion({ moving: true, running: true, dir: 1, falling: false, x: 0, y: 0 }))
+    .toMatchObject({ running: true });
+  expect(normaliseMotion(null)).toBeNull();
+  expect(normaliseMotion({ x: Number.NaN, y: 0 })).toBeNull();
 });
 
 test('level thresholds carry XP through multiple levels', () => {

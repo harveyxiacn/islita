@@ -40,17 +40,24 @@
     advancePet,
     applyAction,
     createDefaultPet,
-    hasRiceFeast,
+    hasPetAnimations,
     parsePetState,
     petStatus,
     type PetAction,
     type PetState,
     type PetStatus,
   } from '$lib/pet/pet';
+  import {
+    animationLabelKey,
+    animationMs,
+    animationPoster,
+    animationSrc,
+  } from '$lib/pet/animations';
   import DesktopFeast from '$lib/pet/DesktopFeast.svelte';
   import Mochi from '$lib/pet/Mochi.svelte';
   import PackSprite from '$lib/pet/PackSprite.svelte';
-  import RiceFeastFilm from '$lib/pet/RiceFeastFilm.svelte';
+  import PetFilm from '$lib/pet/PetFilm.svelte';
+  import SleepZzz from '$lib/pet/SleepZzz.svelte';
   import {
     packFramePath,
     packIdlePose,
@@ -61,10 +68,13 @@
   import { resolvePetTheme } from '$lib/pet/themes';
   import {
     PET_POSITION_KEY,
+    animationForMode,
+    animationLoops,
     artForMode,
     desktopArt,
     facing,
     isPetAction,
+    normaliseMotion,
     parsePetDesktopPosition,
     shouldSleep,
     type PetDesktopMode,
@@ -92,8 +102,9 @@
     { id: 'pat', label: 'plugin.pet.pat', icon: 'M8 13S2.5 9.7 2.5 6.3A2.8 2.8 0 0 1 8 4.8a2.8 2.8 0 0 1 5.5 1.5C13.5 9.7 8 13 8 13Z' },
   ];
 
-  /** One loop of the H3 rice clip (5.17 s), rounded to the sprite loop. */
-  const FEAST_MS = 5200;
+  /** The H3 performances are 60 frames; these are one pass at their rate. */
+  const FEAST_MS = animationMs('eat');
+  const JUMP_MS = animationMs('jump');
 
   const NOTABLE = new Set<PetSituation>(['warn', 'critical', 'providerDown', 'paused']);
   const SPOKEN = new Set<PetSituation>([
@@ -103,7 +114,7 @@
 
   const s = $derived(settings.value);
   let pet = $state<PetState>(createDefaultPet());
-  let motion = $state<PetMotion>({ moving: false, dir: 0, falling: false, x: 0, y: 0 });
+  let motion = $state<PetMotion>({ moving: false, running: false, dir: 0, falling: false, x: 0, y: 0 });
   let facingDir = $state<1 | -1>(1);
   let hovering = $state(false);
   let menuOpen = $state(false);
@@ -114,6 +125,7 @@
   let sleeping = $state(false);
   let pose = $state<'happy' | 'sleep' | null>(null);
   let feasting = $state(false);
+  let jumping = $state(false);
   let bubbleKey = $state<string | null>(null);
   let packs = $state<PetPack[]>([]);
   let packsLoaded = $state(false);
@@ -131,6 +143,7 @@
 
   let poseTimer: ReturnType<typeof setTimeout> | null = null;
   let feastTimer: ReturnType<typeof setTimeout> | null = null;
+  let jumpTimer: ReturnType<typeof setTimeout> | null = null;
   let bubbleTimer: ReturnType<typeof setTimeout> | null = null;
   let hoverTimer: ReturnType<typeof setTimeout> | null = null;
   let sleepTimer: ReturnType<typeof setInterval> | null = null;
@@ -150,28 +163,57 @@
       ? null
       : desktopArt(pet.skin, pet.deepseekForm)
   );
+  /** Too little rice or a nearly empty quota: the fish looks glum at rest. */
+  const sad = $derived(
+    !dragging &&
+      !feasting &&
+      !jumping &&
+      pose === null &&
+      (petStatus(pet) === 'hungry' ||
+        situation === 'critical' ||
+        situation === 'providerDown')
+  );
   const mode = $derived.by((): PetDesktopMode => {
     if (dragging) return 'drag';
     if (sleeping || pose === 'sleep') return 'sleep';
+    if (feasting) return 'eat';
+    if (jumping) return 'jump';
     if (pose === 'happy') return 'happy';
-    if (motion.moving || motion.falling) return 'walk';
+    if (motion.falling) return 'fall';
+    if (motion.moving) return motion.running ? 'run' : 'walk';
+    if (sad) return 'sad';
     return 'idle';
   });
   const packMode = $derived.by((): PackMode => {
-    if (mode === 'drag') return 'drag';
-    if (mode === 'sleep') return 'sleep';
-    if (mode === 'walk') return 'walk';
-    if (mode === 'happy') return 'pat';
-    return 'idle';
+    switch (mode) {
+      case 'drag':
+        return 'drag';
+      case 'sleep':
+        return 'sleep';
+      case 'walk':
+      case 'run':
+        return 'walk';
+      case 'happy':
+      case 'jump':
+      case 'eat':
+        return 'pat';
+      case 'fall':
+        return 'drag';
+      default:
+        return 'idle';
+    }
   });
   const artUrl = $derived(artForMode(art, mode));
   const mochiStatus = $derived<PetStatus>(
-    mode === 'sleep' ? 'tired' : mode === 'happy' ? 'happy' : petStatus(pet)
+    mode === 'sleep' ? 'tired' : mode === 'happy' || mode === 'jump' ? 'happy' : petStatus(pet)
   );
   const bubbleText = $derived(bubbleKey ? tDyn(bubbleKey, { name: pet.name }) : null);
   const feastLabel = $derived(t('plugin.pet.rice.eating', { name: pet.name }));
-  /** The bundled DeepSeek chibi can be replaced by the rice cutscene. */
-  const feastable = $derived(hasRiceFeast(pet));
+  /** The bundled DeepSeek chibi has one H3 performance per desktop mode. */
+  const animatable = $derived(hasPetAnimations(pet));
+  const animClip = $derived(animationForMode(mode));
+  const animLabel = $derived(tDyn(animationLabelKey(animClip), { name: pet.name }));
+  const animOnce = $derived(!animationLoops(animClip));
 
   function copyState(state: PetState): PetState {
     return { ...state, sprite: state.sprite ? { ...state.sprite } : null };
@@ -233,10 +275,12 @@
   /** Show the bowl briefly; a second feed restarts the full hold. */
   function startFeast(): void {
     feasting = true;
+    sleeping = false;
     if (feastTimer) clearTimeout(feastTimer);
     feastTimer = setTimeout(() => {
       feastTimer = null;
       feasting = false;
+      checkSleep();
     }, FEAST_MS);
   }
 
@@ -246,6 +290,26 @@
       feastTimer = null;
     }
     feasting = false;
+  }
+
+  /** One hop, then back to whatever the pet was doing. */
+  function startJump(): void {
+    jumping = true;
+    sleeping = false;
+    if (jumpTimer) clearTimeout(jumpTimer);
+    jumpTimer = setTimeout(() => {
+      jumpTimer = null;
+      jumping = false;
+      checkSleep();
+    }, JUMP_MS);
+  }
+
+  function stopJump(): void {
+    if (jumpTimer) {
+      clearTimeout(jumpTimer);
+      jumpTimer = null;
+    }
+    jumping = false;
   }
 
   function setPose(next: 'happy' | 'sleep' | null, holdMs = 0): void {
@@ -264,7 +328,7 @@
   }
 
   function checkSleep(): void {
-    const busy = hovering || menuOpen || dragging || pressing;
+    const busy = hovering || menuOpen || dragging || pressing || feasting || jumping;
     sleeping = shouldSleep(pet.energy, Date.now() - lastActiveAt, busy);
     if (sleeping) hideBubble();
   }
@@ -278,7 +342,9 @@
     const advanced = advancePet(pet, now).state;
     pet = applyAction(advanced, action, now).state;
     if (action === 'feed') startFeast();
-    setPose(action === 'rest' ? 'sleep' : 'happy', action === 'rest' ? 1900 : 1200);
+    if (action === 'play') startJump();
+    const hold = action === 'rest' ? 1900 : action === 'pat' ? 1500 : 0;
+    setPose(action === 'rest' ? 'sleep' : action === 'pat' ? 'happy' : null, hold);
     speakSituation(action, 5200);
     checkSleep();
     persistNow();
@@ -334,6 +400,7 @@
     hideBubble();
     // The bowl is anchored to the floor; carried away it would look detached.
     stopFeast();
+    stopJump();
     setPose(null);
     void petSetDragging(true);
   }
@@ -505,10 +572,13 @@
   async function boot(): Promise<void> {
     await loadPacks();
     const pack = packs.find((entry) => entry.id === pet.packId) ?? null;
-    const idle = pack
-      ? assetUrl(packFramePath(pack, packIdlePose(pack).act.frames[0]))
-      : artForMode(art, 'idle');
+    const idle = animatable
+      ? animationPoster('idle')
+      : pack
+        ? assetUrl(packFramePath(pack, packIdlePose(pack).act.frames[0]))
+        : artForMode(art, 'idle');
     if (idle) await decodeImage(idle);
+    if (animatable) await decodeImage(animationSrc('idle'));
     await tick();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     if (disposed) return;
@@ -553,7 +623,8 @@
   });
 
   $effect(() => {
-    const allowed = !sleeping && !hovering && !menuOpen && !dragging && !pressing;
+    const allowed =
+      !sleeping && !hovering && !menuOpen && !dragging && !pressing && !feasting && !jumping;
     void petSetRoaming(allowed);
   });
 
@@ -570,9 +641,11 @@
     let unState: Unlisten | null = null;
     let unTask: Unlisten | null = null;
 
-    void listen<PetMotion>('pet-motion', (next) => {
-      motion = next;
-      if (next.dir !== 0) facingDir = facing(next.dir);
+    void listen<unknown>('pet-motion', (next) => {
+      const parsed = normaliseMotion(next);
+      if (!parsed) return;
+      motion = parsed;
+      if (parsed.dir !== 0) facingDir = facing(parsed.dir);
     }).then((un) => (disposed ? un() : (unMotion = un)));
 
     void listen<PetSituation>('pet-event', (next) => {
@@ -590,7 +663,13 @@
         // windows show one pet rather than two independent copies.
         lastNotable = null;
         lastActiveAt = Date.now();
-        setPose(payload.action === 'rest' ? 'sleep' : 'happy', payload.action === 'rest' ? 1900 : 1200);
+        if (payload.action === 'feed') startFeast();
+        if (payload.action === 'play') startJump();
+        const hold = payload.action === 'rest' ? 1900 : payload.action === 'pat' ? 1500 : 0;
+        setPose(
+          payload.action === 'rest' ? 'sleep' : payload.action === 'pat' ? 'happy' : null,
+          hold
+        );
         speakSituation(payload.action, 5200);
         checkSleep();
       }
@@ -627,6 +706,7 @@
       window.removeEventListener('keydown', onKeyDown);
       if (poseTimer) clearTimeout(poseTimer);
       if (feastTimer) clearTimeout(feastTimer);
+      if (jumpTimer) clearTimeout(jumpTimer);
       if (bubbleTimer) clearTimeout(bubbleTimer);
       if (hoverTimer) clearTimeout(hoverTimer);
       if (greetTimer) clearTimeout(greetTimer);
@@ -701,8 +781,8 @@
   {/if}
 
   <div class="pet-shadow" aria-hidden="true"></div>
-  <!-- Bundled DeepSeek art brings its own bowl; every other skin gets one. -->
-  {#if !(feasting && feastable)}
+  <!-- The generated eat clip carries its own bowl; other skins get an overlay. -->
+  {#if !animatable}
     <DesktopFeast active={feasting} label={feastLabel} />
   {/if}
 
@@ -724,12 +804,14 @@
       <span
         class="pet-figure mode-{mode}"
         class:falling={motion.falling}
+        class:running={motion.running}
         class:chewing={feasting}
-        class:filming={feasting && feastable}
+        class:filming={animatable}
       >
-        {#if feasting && feastable}
-          <span class="rice-figure">
-            <RiceFeastFilm active label={feastLabel} />
+        {#if animatable}
+          <span class="animation-figure">
+            <PetFilm clip={animClip} label={animLabel} once={animOnce} />
+            <SleepZzz active={mode === 'sleep'} />
           </span>
         {:else if pet.sprite}
           {#if pet.sprite.frames === 4}
@@ -853,7 +935,7 @@
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    width: 13rem;
+    width: 13.8rem;
     max-width: 94vw;
     height: 14rem;
     max-height: 76vh;
@@ -898,6 +980,26 @@
     animation: pet-walk 0.3s ease-in-out infinite;
   }
 
+  .pet-figure.mode-run {
+    animation: pet-walk 0.3s ease-in-out infinite;
+  }
+
+  .pet-figure.mode-jump {
+    animation: pet-hop 0.55s var(--ease-out, ease-out) 2;
+  }
+
+  .pet-figure.mode-fall {
+    animation: pet-dangle 0.8s ease-in-out infinite;
+  }
+
+  .pet-figure.mode-eat {
+    animation: pet-chew 0.62s ease-in-out infinite;
+  }
+
+  .pet-figure.mode-sad {
+    animation: pet-sad 4.4s ease-in-out infinite;
+  }
+
   .pet-figure.mode-sleep {
     animation: pet-sleep 5s ease-in-out infinite;
   }
@@ -915,16 +1017,21 @@
     animation: pet-chew 0.62s ease-in-out infinite;
   }
 
-  /* The generated film already carries its own bounce and chew. */
-  .pet-figure.chewing.filming {
+  /* The generated film already carries its own bounce, stride and chew. */
+  .pet-figure.filming {
     animation: none;
   }
 
-  /* The rice cutout replaces the full-body art for the cutscene; the square
-     keeps the steam/grain percentages aligned with the artwork. */
-  .rice-figure {
+  /* H3 keeps the character centred, so the window adds the actual leap. */
+  .pet-figure.filming.mode-jump {
+    animation: pet-leap 2.5s var(--ease-out, ease-out) 1;
+  }
+
+  /* The film is square; the percentages inside SleepZzz stay aligned. */
+  .animation-figure {
+    position: relative;
     display: block;
-    width: 12.4rem;
+    width: 13.4rem;
     max-width: 96%;
     aspect-ratio: 1;
     margin-bottom: 0.1rem;
@@ -1024,6 +1131,38 @@
     }
     100% {
       transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes pet-leap {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    14% {
+      transform: translateY(3px) scale(0.985, 0.97);
+    }
+    34% {
+      transform: translateY(-16px) scale(1.005, 1.025);
+    }
+    52% {
+      transform: translateY(-20px) scale(1);
+    }
+    72% {
+      transform: translateY(1px) scale(0.995, 0.982);
+    }
+    84% {
+      transform: translateY(-4px) scale(1);
+    }
+  }
+
+  @keyframes pet-sad {
+    0%,
+    100% {
+      transform: translateY(2px) scale(0.985);
+    }
+    50% {
+      transform: translateY(4px) scale(0.975);
     }
   }
 
@@ -1164,6 +1303,11 @@
   @media (prefers-reduced-motion: reduce) {
     .pet-figure.mode-idle,
     .pet-figure.mode-walk,
+    .pet-figure.mode-run,
+    .pet-figure.mode-jump,
+    .pet-figure.mode-fall,
+    .pet-figure.mode-eat,
+    .pet-figure.mode-sad,
     .pet-figure.mode-sleep,
     .pet-figure.mode-happy,
     .pet-figure.mode-drag,

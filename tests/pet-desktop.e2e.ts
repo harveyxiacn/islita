@@ -39,8 +39,13 @@ test('the detached pet renders the saved skin, walks and reacts to a pat', async
 
   const petButton = page.getByRole('button', { name: 'Pet: Fishy' });
   await expect(petButton).toBeVisible();
-  const sprite = page.locator('img.sprite');
-  await expect(sprite).toHaveAttribute('src', /\/pet\/desktop\/deepseek-chibi-idle\.webp$/);
+  // The bundled chibi is always drawn by the H3 player.
+  const film = page.getByTestId('pet-film');
+  await expect(film).toBeVisible();
+  await expect(film).toHaveAttribute('data-clip', 'idle');
+  await expect(film).toHaveAttribute('data-kind', 'film');
+  await expect(film).toHaveAttribute('data-src', /\/pet\/animations\/idle-sheet\.webp$/);
+  await expect(page.locator('img.sprite')).toHaveCount(0);
   await expect(page.locator('.stage')).toBeVisible();
 
   // A click without pointer movement is a pat, not a drag.
@@ -53,13 +58,11 @@ test('the detached pet renders the saved skin, walks and reacts to a pat', async
   await expect(menu).toBeVisible();
   await menu.getByRole('menuitem', { name: 'Feed', exact: true }).click();
   await expect(menu).toBeHidden();
-  await expect(page.locator('.bubble')).toHaveText('Rice! One more bowl!');
-  // The bundled DeepSeek chibi becomes the rice cutscene, bowl included.
-  const feast = page.getByTestId('rice-feast');
-  await expect(feast).toBeVisible();
-  await expect(feast).toHaveAttribute('data-kind', 'film');
-  await expect(feast).toHaveAttribute('data-src', /\/pet\/deepseek-feast-sheet\.webp$/);
-  const strip = feast.locator('img.sheet');
+  await expect(page.locator('.bubble')).toHaveText('White rice! One more bowl!');
+  // Feeding swaps the idle loop for the generated eat performance.
+  await expect(film).toHaveAttribute('data-clip', 'eat');
+  await expect(film).toHaveAttribute('data-src', /\/pet\/animations\/eat-sheet\.webp$/);
+  const strip = film.locator('img.sheet');
   await expect(strip).toBeVisible();
   const firstFrame = await strip.evaluate((element) => getComputedStyle(element).transform);
   await page.waitForTimeout(250);
@@ -90,7 +93,33 @@ test('a non-DeepSeek pet gets the standalone rice bowl instead', async ({ page }
     .click();
 
   await expect(page.getByTestId('desktop-feast')).toHaveClass(/active/);
-  await expect(page.getByTestId('rice-feast')).toHaveCount(0);
+  await expect(page.getByTestId('pet-film')).toHaveCount(0);
+});
+
+test('play hops and rest sleeps with floating ZZZ', async ({ page }) => {
+  await seed(page, { skin: 'deepseek', form: 'chibi', name: 'Fishy' });
+  await page.goto(PET_URL);
+
+  const petButton = page.getByRole('button', { name: 'Pet: Fishy' });
+  await expect(petButton).toBeVisible();
+  const film = page.getByTestId('pet-film');
+
+  await petButton.click({ button: 'right' });
+  await page
+    .getByRole('menu', { name: 'Pet menu' })
+    .getByRole('menuitem', { name: 'Play', exact: true })
+    .click();
+  await expect(film).toHaveAttribute('data-clip', 'jump');
+
+  // Let the one-shot hop finish before asking for a nap.
+  await page.waitForTimeout(2800);
+  await petButton.click({ button: 'right' });
+  await page
+    .getByRole('menu', { name: 'Pet menu' })
+    .getByRole('menuitem', { name: 'Rest', exact: true })
+    .click();
+  await expect(film).toHaveAttribute('data-clip', 'sleep');
+  await expect(page.getByTestId('pet-zzz')).toBeVisible();
 });
 
 test('the context menu toggles wandering and hides the pet from the desktop', async ({ page }) => {
@@ -151,7 +180,7 @@ test('a custom portrait sprite takes precedence over the skin', async ({ page })
   await expect(page.locator('svg.creature')).toHaveCount(0);
 });
 
-test('reduced motion keeps the still rice cutout', async ({ page }) => {
+test('reduced motion keeps a still poster instead of the strip', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await seed(page, { skin: 'deepseek', form: 'chibi', name: 'Fishy' });
   await page.goto(PET_URL);
@@ -164,11 +193,11 @@ test('reduced motion keeps the still rice cutout', async ({ page }) => {
     .getByRole('menuitem', { name: 'Feed', exact: true })
     .click();
 
-  const feast = page.getByTestId('rice-feast');
-  await expect(feast).toHaveAttribute('data-kind', 'cutout');
-  await expect(feast.locator('img.rice-fish')).toHaveAttribute(
+  const film = page.getByTestId('pet-film');
+  await expect(film).toHaveAttribute('data-kind', 'still');
+  await expect(film).toHaveAttribute('data-clip', 'eat');
+  await expect(film.locator('img.still')).toHaveAttribute(
     'src',
-    /\/pet\/deepseek-chibi-rice\.webp$/
+    /\/pet\/animations\/eat-poster\.webp$/
   );
-  await expect(feast.locator('img.rice-fish')).toHaveCSS('animation-name', 'none');
 });

@@ -17,9 +17,10 @@ It provides:
 - fullness, mood and energy needs that decay with elapsed time;
 - feed, play, rest and pat interactions, XP, levels, a short reaction line and a
   lifetime bowls-eaten count;
-- a DeepSeek 大肥鱼 rice-eating cutscene generated with MiniMax H3: a muted
-  5.2 s video in the island panel, a chroma-keyed 60-frame transparent strip in
-  the detached window, and the original CSS cutout as the fallback;
+- nine DeepSeek 大肥鱼 performances generated with MiniMax H3 — idle, walk,
+  run, jump, fall, eat, sleep (with a floating ZZZ), happy and sad — packed as
+  chroma-keyed transparent strips and shared by the island panel and the
+  detached window;
 - original character-voice lines driven by quota, provider and pet needs, shown
   in the panel and beside a ring's quota popover, plus an unread dot and a
   hungry/sleepy need dot on the pet's island rail icon;
@@ -118,62 +119,84 @@ icon in the island rail; `PetPanel.svelte` calls `seen()` while it is mounted,
 clearing it. The pet panel may show a newer island-wide event while a ring's
 popover speaks about that provider, but both use the same voice and line table.
 
-## Rice feast
+## Generated performances
 
-Feeding the bundled DeepSeek chibi plays a 5.2-second cutscene. It exists in
-three forms, in fallback order:
+The bundled DeepSeek chibi is drawn by nine MiniMax-H3 performances, one per
+desktop mode. Both the island panel and the detached window use the same player
+(`PetFilm.svelte`); the old panel video and cutscene-only film are gone.
 
-1. **Island panel — video.** `RiceFeastVideo.svelte` plays a 768×448, 24 fps,
-   5.17 s MiniMax-H3 clip (`static/pet/deepseek-feast.{webm,mp4}`, with a
-   `.webp` poster) with the sound muted. A soft oval mask blends the clip's
-   deep-sea plate into the panel scene, so the clip reads as part of the panel
-   rather than a video player. Its first and last frames are the same image, so
-   the loop is seamless; `FEAST_MS` is 5.2 s.
-2. **Detached window — transparent strip.** `RiceFeastFilm.svelte` draws a
-   60-frame horizontal WebP (`static/pet/deepseek-feast-sheet.webp`, 15360×256,
-   about 1 MB) and advances one 256 px cell at 12 fps with a small rAF loop and
-   `translateX`. Unlike CSS `steps()` on `background-position`, this lands
-   exactly on every cell at any container size. The film is silent and has an
-   alpha channel, so the window keeps the desktop wallpaper and stays a pet,
-   not a rectangle.
-3. **Fallback — CSS cutout.** `RiceFeast.svelte` keeps the original supplied
-   `deepseek-chibi-rice.webp` cutout with CSS steam, eight grains, sparkles and
-   a munch loop. It is used when `prefers-reduced-motion: reduce`, when the
-   video cannot start within 4 s, or when the sheet fails to load, so the
-   moment never breaks on an older WebView.
+| Clip | Used for | Playback |
+|---|---|---|
+| `idle` | standing, waiting for the next bowl | 12 fps loop |
+| `walk` | a wander segment | 16 fps loop |
+| `run` | a faster wander segment (about a third of trips) | 24 fps loop |
+| `jump` | the **Play** action, one hop | 24 fps, one-shot |
+| `fall` | dropped above the work-area floor; also held while dragging | 24 fps loop |
+| `eat` | **Feed**, five seconds with the white-rice bowl | 12 fps loop |
+| `sleep` | **Rest** or an exhausted pet | 12 fps loop |
+| `happy` | **Pet**, a good mood | 24 fps loop |
+| `sad` | hungry, critical quota, or a provider that cannot be reached | 12 fps loop |
+
+Each clip is a 60-cell horizontal transparent WebP strip
+(`static/pet/animations/<clip>-sheet.webp`, 15360×256, roughly 0.6–0.75 MB) plus a
+256 px first-frame poster (`<clip>-poster.webp`). `PetFilm` advances one cell
+with a small rAF loop and `translateX`, so it lands exactly at any container
+size; the poster covers decode and reduced motion. A one-shot clip holds its
+last frame (`animationLoops`), and the page adds a small `pet-leap` lift because
+H3 keeps the character centred.
+
+The sleeping ZZZ is not generated: `SleepZzz.svelte` floats three stroked Z
+letters from the character. That guarantees readable, localisable text
+and avoids asking the video model to draw glyphs. The reduced-motion path keeps
+the ZZZ static and swaps the strip for the poster.
+
+`hasPetAnimations` (formerly `hasRiceFeast`, still exported as an alias) limits
+the player to the bundled chibi. A transformed DeepSeek, another skin, a custom
+sprite or a DyberPet pack keeps its own art; a non-DeepSeek pet fed in the
+detached window still gets `DesktopFeast.svelte`, a small bowl with steam and
+grains at its feet.
 
 ### H3 generation
 
-The clip was generated locally with **MiniMax H3** in ComfyUI on an RTX 4090
+The clips were generated locally with **MiniMax H3** in ComfyUI on an RTX 4090
 (24 GB): `minimax_h3_fl2va_pruned_int8_convrot`, the Qwen3-VL 32B H3 text
 encoder, the fp16 video and fp32 audio VAEs, and the **Larry v4-600 EMA**
 Turbo LoRA at strength 1.0, 8 steps, `MiniMaxH3SigmaShift` 12/3, 124 frames at
-24 fps. The first and last frames are the same image so the loop closes. The
-panel start frame places the supplied cutout on a painted deep-sea plate
-(768×448); the desktop pass places it on a flat `#00b140` chroma screen
-(768×768) and asks the model for no steam, shadows or green spill. Each pass
-took about two minutes end to end; model loading dominates, so the 4-step
-LoRAs were only ~20 s faster and visibly softer.
+24 fps, 768×768. Every action starts and ends on the same green-screen frame so
+the loop closes. The prompt fixes the camera and the character, forbids text,
+audio, shadows and green spill, and describes face *and* limbs explicitly
+(blinks, arm swings, leg strides, tail and hair follow-through, tears for sad,
+cheeks and steam for eating).
+
+The start frames are the supplied transparent art composited on flat `#00b140`
+at a common scale and floor line (`starts/islita-<action>-green.png`). A batch
+script queues all nine actions, one seed each. A run takes about two minutes;
+model loading dominates.
 
 The chroma pass uses the green excess `G - max(R, B)` as alpha,
 un-premultiplies against the screen colour, despills, erodes by one pixel and
-softens by 0.6 px. Sixty every-other frames are cropped to a fixed square,
-premultiplied before Lanczos downscaling to 256 px, and packed into the WebP
-strip. The source clips and a screen recording live in `docs/media/`; the
-generation scripts are not part of the app, and there is no runtime model, GPU
-or network dependency.
+softens by 0.55 px. **All clips share one square crop** computed from the union
+of every character bounding box, so switching walk → run → jump never changes
+the fish's size or floor line. Sixty every-other frames are premultiplied before
+Lanczos downscaling to 256 px, then packed into the strip. The generation
+scripts are not part of the app, and there is no runtime model, GPU or network
+dependency.
 
-The cutscene is deliberately limited to the bundled chibi. A transformed
-DeepSeek, another skin, a custom sprite or a DyberPet pack keeps its own art
-(the helper is `hasRiceFeast`); a non-DeepSeek pet gets `DesktopFeast.svelte`, a
-small bowl with steam and grains at its feet.
+### The white-rice metaphor
+
+The chibi calls tokens and quota **白饭 / white rice**. The lines are in
+`src/lib/i18n/{en,zh-CN}.json` under `plugin.pet.say.deepseek-chibi.*` and
+`plugin.pet.say.deepseek-transformed.*`; a nearly empty window says
+“白饭要被吃光了！给我留一口！” (“The white rice is almost gone! Save me a
+bowl!”), a reset says the bowl is full again, and feeding asks for one more
+bowl. `plugin.pet.animation.*` describes each clip for screen readers.
 
 Both surfaces replay the same moment. Feeding in the island panel persists
 immediately and emits `pet-state {state, action: 'feed'}`; the detached window
-adopts the newer state, notices `meals` increased, and shows the cutscene (or
-plays the action it received). Feeding in the detached window is adopted by a
-mounted panel the same way. The panel also shows a `meals-chip` with the
-lifetime bowl count beside the level chip.
+adopts the newer state, notices `meals` increased, and plays the eat clip.
+Playing emits `action: 'play'` and both surfaces hop. Feeding in the detached
+window is adopted by a mounted panel the same way. The panel also shows a
+`meals-chip` with the lifetime bowl count beside the level chip.
 
 ## Sprite format for user images
 
@@ -270,8 +293,8 @@ original 3D mascot, not for preserving this 2D character art. The island
   page vetoes roaming with `pet_set_roaming`. Sleeping is derived
   (`shouldSleep`): energy below 22 or three quiet minutes; interacting wakes it.
 - `prefers-reduced-motion` keeps the window's real movement but removes the
-  decorative bob/hop/dangle loops; the rice feast falls back to the still
-  cutout.
+  decorative loops; `PetFilm` swaps the strip for its 256 px poster and the
+  floating ZZZ becomes static.
 
 Interaction: click = pat, drag = move, right-click = a compact menu with
 Feed / Play / Rest / Pet, a Wander toggle (`petRoam`), Settings… and Hide from
@@ -352,19 +375,20 @@ not exposed by Tauri).
 
 - `pnpm test` (Playwright unit config): `tests/pet.unit.ts` covers decay, the
   offline cap, clamps, XP/level thresholds, status priority, corrupt-state
-  repair, the meals counter, rice-feast eligibility, frame classification and
-  import rejection; `tests/pet-desktop.unit.ts` checks the sprite mapping
-  against the files on disk, the Rust window constants, position parsing,
-  actions, sleep and facing.
+  repair, the meals counter, performance eligibility, mode→clip mapping, clip
+  playback, motion repair, frame classification and import rejection;
+  `tests/pet-desktop.unit.ts` checks the sprite mapping against the files on
+  disk, the Rust window constants, position parsing, actions, sleep and facing.
 - `tests/pet.e2e.ts` opens the island panel, checks the default mascot/stats,
-  verifies that feeding shows the video feast (`data-kind="video"`), increments
-  the meals chip, and seeds a hungry pet to check the rail's need dot and
-  tooltip.
+  switches to the DeepSeek chibi, verifies the H3 player
+  (`data-clip="idle"`/`"eat"`), feeding and the meals chip, and seeds a hungry
+  pet to check the rail's need dot and tooltip.
 - `tests/pet-desktop.e2e.ts` opens `/pet` in the browser preview, renders the
-  saved DeepSeek/Hachiware/Mochi/custom sprite, pats, feeds from the context
-  menu (the transparent film for DeepSeek, the standalone bowl for other
-  skins), checks that the strip advances, verifies the persisted fullness and
-  meals, toggles Wander, and checks the reduced-motion CSS fallback.
+  saved DeepSeek/Hachiware/Mochi/custom sprite, pats, plays (the one-shot jump),
+  rests (the sleep clip with ZZZ), feeds from the context menu (the transparent
+  film for DeepSeek, the standalone bowl for other skins), checks that the strip
+  advances, verifies the persisted fullness and meals, toggles Wander, and
+  checks the reduced-motion poster.
 - `cargo test --locked` covers the window clamp and random-range helpers;
   `cargo clippy --locked --all-targets -- -D warnings`, `pnpm check`,
   `pnpm check:i18n` and `pnpm check:agents` are part of the release gate.
