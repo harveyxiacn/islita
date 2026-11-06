@@ -132,6 +132,22 @@ test('the island rail exposes every built-in plugin and imports a calendar', asy
   expect(errors).toEqual([]);
 });
 
+test('a plugin panel grows past the capsule-sized native window', async ({ page }) => {
+  // The island window is only as tall as the capsule, so `vh` describes the
+  // capsule and not the monitor. Clamping the panel against it collapsed the
+  // panel to zero and the window could never grow; the work area is the limit.
+  await page.setViewportSize({ width: 900, height: 150 });
+  await openIsland(page);
+  await page.locator('.island-tools').getByRole('button', { name: 'Mail', exact: true }).click();
+  const panel = page.locator('.island-panel');
+  await expect(panel).toBeVisible();
+  await expect
+    .poll(async () => (await panel.boundingBox())?.height ?? 0)
+    .toBeGreaterThan(120);
+  const stage = await page.locator('.stage').boundingBox();
+  expect(stage?.height ?? 0).toBeGreaterThan(240);
+});
+
 test('the island expands and collapses around its horizontal centre', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 520 });
   await openIsland(page);

@@ -229,6 +229,22 @@
   /** Resting on the revealed capsule this long expands the board. */
   const ISLAND_DWELL_MS = 280;
   const autoHideIsland = $derived(island && s.islandAutoHide);
+  /**
+   * The panel's real limit is the monitor's work area: the island window is
+   * only as tall as the capsule, so `vw`/`vh` inside it describe the capsule
+   * and clamping the panel against them collapses it to nothing.
+   */
+  let screenW = $state(0);
+  let screenH = $state(0);
+  /** Room left for the panel below the expanded capsule, in CSS px. */
+  const panelMaxW = $derived(
+    screenW > 0 ? Math.max(160, screenW - 2 * s.islandMargin - 2 * ISLAND_BORDER) : 0
+  );
+  const panelMaxH = $derived(
+    screenH > 0
+      ? Math.max(160, screenH - s.islandMargin - openH - ISLAND_BORDER - PANEL_GAP - 8)
+      : 0
+  );
 
   /** The box the capsule morphs to; the stage reserves the larger box. */
   const pillTargetW = $derived((islandIdle ? idleW : openW) + ISLAND_BORDER);
@@ -448,6 +464,14 @@
   });
 
   onMount(() => {
+    // `screen`, not `innerWidth/Height`: the island window is only as large as
+    // the capsule, so its viewport cannot tell a panel how much room exists.
+    const readScreen = () => {
+      screenW = window.screen?.availWidth || window.innerWidth;
+      screenH = window.screen?.availHeight || window.innerHeight;
+    };
+    readScreen();
+    window.addEventListener('resize', readScreen);
     const disposers: Array<() => void> = [settings.init(), snapshot.init()];
     let un: Unlisten | null = null;
     let unTask: Unlisten | null = null;
@@ -503,6 +527,7 @@
       unPetRequest?.();
       window.removeEventListener('island-plugin-state', onPluginState);
       window.removeEventListener('storage', onPetStorage);
+      window.removeEventListener('resize', readScreen);
       clearTimeout(fxTimer);
       clearTimeout(islandCollapseTimer);
       clearTimeout(panelCloseTimer);
@@ -1214,6 +1239,8 @@
         <section
           class="island-panel surface"
           class:closing={closingPlugin}
+          style:max-width={panelMaxW > 0 ? `${panelMaxW}px` : undefined}
+          style:max-height={panelMaxH > 0 ? `${panelMaxH}px` : undefined}
           aria-label={tDyn(activePlugin.label)}
           use:measureSize={onPanelSize}
         >
@@ -1746,11 +1773,9 @@
      It is measured by the same observer, so the window grows downwards. */
   .island-panel {
     width: max-content;
-    max-width: calc(100vw - 1.5rem);
-    /* The capsule and tool rail occupy the top ~12rem including the island
-       margin. Reserving that much keeps the panel's own scrollbar inside the
-       window instead of letting its last rows fall off the screen. */
-    max-height: calc(100vh - 13rem);
+    /* The size cap is set inline from the monitor's work area (see
+       `panelMaxH`): inside the island window `vw`/`vh` are the capsule, not
+       the screen, so a CSS clamp here would collapse the panel to zero. */
     padding: 0.55rem 0.7rem;
     border-radius: calc(var(--r-pill) + 2px);
     overflow-y: auto;
