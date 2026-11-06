@@ -14,15 +14,20 @@
 </script>
 
 <SettingsCard id="behaviour" title={t('settings.behaviour')} reset="behaviour">
+  {#if s.island}
+    <p class="note">{t('settings.autoHide.island')}</p>
+  {/if}
+
   <Field label={t('settings.autoHide')}>
     <Toggle
       checked={s.autoHide}
       label={t('settings.autoHide')}
+      disabled={s.island}
       onchange={(v) => void settings.patch({ autoHide: v })}
     />
   </Field>
 
-  <Field label={t('settings.autoHideDelayMs')}>
+  <Field label={t('settings.autoHideDelayMs')} hint={t('settings.autoHideDelayMs.hint')}>
     <input
       class="field num"
       type="number"
@@ -30,7 +35,7 @@
       max="10000"
       step="100"
       value={s.autoHideDelayMs}
-      disabled={!s.autoHide}
+      disabled={s.island ? !s.islandAutoHide : !s.autoHide}
       onchange={(e) => void settings.patch({ autoHideDelayMs: Math.round(num(e)) })}
       aria-label={t('settings.autoHideDelayMs')}
     />
@@ -57,7 +62,7 @@
       max="40"
       step="1"
       value={s.collapsedWidth}
-      disabled={!s.autoHide}
+      disabled={s.island || !s.autoHide}
       onchange={(e) => void settings.patch({ collapsedWidth: Math.round(num(e)) })}
       aria-label={t('settings.collapsedWidth')}
     />

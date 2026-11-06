@@ -34,6 +34,20 @@ for (const language of ['en', 'zh-CN']) {
   });
 }
 
+test('the edge auto-hide steps aside while the island hides on its own', async ({ page }) => {
+  const settings = encodeURIComponent(JSON.stringify({ island: true, islandAutoHide: true }));
+  await page.goto(`/dashboard?tab=settings&settings=${settings}`);
+  const behaviour = page.locator('article#behaviour');
+  // The edge bar is not in use, so its toggle explains itself and is disabled.
+  await expect(behaviour.getByRole('checkbox', { name: 'Auto-hide to a thin handle' })).toBeDisabled();
+  await expect(behaviour.getByText(/not used while the dynamic island is on/)).toBeVisible();
+  // The island's own switch, and the delay they share, stay usable.
+  await expect(
+    page.locator('article#position').getByRole('checkbox', { name: 'Auto-hide at the top edge' })
+  ).toBeEnabled();
+  await expect(behaviour.getByLabel('Auto-hide delay (ms)')).toBeEnabled();
+});
+
 test('settings groups fold to two columns on a wide window and one on a narrow one', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
