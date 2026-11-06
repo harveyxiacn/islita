@@ -190,7 +190,12 @@ export function shouldSleep(
   return energy < 22 || idleMs >= idleAfterMs;
 }
 
-/** Which way the sprite faces: `-1` flips it to walk left. */
+/**
+ * Which way to mirror the sprite. The supplied DeepSeek art is drawn walking
+ * to the left (the planted foot slides right, the tail trails right), so a
+ * leftward walk needs no flip and a rightward one does. Getting this backwards
+ * makes the pet moonwalk: it glides one way while its weight shifts the other.
+ */
 export function facing(dir: number): -1 | 1 {
-  return dir < 0 ? -1 : 1;
+  return dir > 0 ? -1 : 1;
 }

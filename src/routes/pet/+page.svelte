@@ -6,7 +6,8 @@
   page draws the character and owns the personality:
 
   * `pet-motion` events (moving / dir / falling) switch the sprite between
-    idle, walk, sleep and drag; facing is mirrored from the walk direction.
+    idle, walk, sleep and drag; the art walks left, so a rightward walk is
+    mirrored and a leftward one is not.
   * Dragging is done in JS with `pet_move_by`, so a click still registers as a
     pat. The platform stops the wander loop for the duration.
   * The same state machine and localStorage entry as the island's pet panel

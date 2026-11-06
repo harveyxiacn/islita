@@ -84,9 +84,10 @@ test('the pet naps when exhausted or after a long quiet stretch', () => {
   expect(shouldSleep(80, 59_000, false, 60_000)).toBe(false);
 });
 
-test('facing mirrors only a leftward walk', () => {
-  expect(facing(-1)).toBe(-1);
-  expect(facing(-42)).toBe(-1);
+test('facing mirrors only a rightward walk', () => {
+  // The art already walks left; flipping it to the left was the moonwalk.
+  expect(facing(-1)).toBe(1);
+  expect(facing(-42)).toBe(1);
   expect(facing(0)).toBe(1);
-  expect(facing(1)).toBe(1);
+  expect(facing(1)).toBe(-1);
 });

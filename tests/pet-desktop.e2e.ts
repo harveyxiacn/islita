@@ -48,6 +48,11 @@ test('the detached pet renders the saved skin, walks and reacts to a pat', async
   await expect(page.locator('img.sprite')).toHaveCount(0);
   await expect(page.locator('.stage')).toBeVisible();
 
+  // The poster only covers decode. Leaving it under the transparent strip
+  // paints a second silhouette behind the moving character.
+  await expect(film).toHaveClass(/ready/);
+  await expect(film.locator('img.poster')).toHaveCSS('opacity', '0');
+
   // A click without pointer movement is a pat, not a drag.
   await petButton.click();
   await expect(page.locator('.bubble')).toHaveText('Mm... one more pat.');

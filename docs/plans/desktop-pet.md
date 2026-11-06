@@ -141,9 +141,11 @@ Each clip is a 60-cell horizontal transparent WebP strip
 (`static/pet/animations/<clip>-sheet.webp`, 15360×256, roughly 0.6–0.75 MB) plus a
 256 px first-frame poster (`<clip>-poster.webp`). `PetFilm` advances one cell
 with a small rAF loop and `translateX`, so it lands exactly at any container
-size; the poster covers decode and reduced motion. A one-shot clip holds its
-last frame (`animationLoops`), and the page adds a small `pet-leap` lift because
-H3 keeps the character centred.
+size; the poster covers decode and reduced motion and is hidden as soon as the
+strip is ready, otherwise its transparent pixels let a second silhouette show
+through. A one-shot clip holds its last frame (`animationLoops`), and the page
+adds a small `pet-leap` lift because H3 keeps the character centred. The clips
+are drawn walking left; a rightward wander is mirrored, a leftward one is not.
 
 The sleeping ZZZ is not generated: `SleepZzz.svelte` floats three stroked Z
 letters from the character. That guarantees readable, localisable text

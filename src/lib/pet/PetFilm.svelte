@@ -146,6 +146,13 @@
     object-fit: contain;
   }
 
+  /* The strip has transparent pixels around the character, so a poster left
+     visible underneath shows through as a second, offset silhouette. It is a
+     decode placeholder only: once the strip is ready it must step aside. */
+  .film.ready .poster {
+    opacity: 0;
+  }
+
   .sheet {
     position: absolute;
     top: 0;
