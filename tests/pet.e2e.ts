@@ -2,10 +2,22 @@
 // the three needs meters, skin/form switching, and a local interaction updating
 // the reaction line. Thresholds are raised so the mock snapshot starts calm.
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import {
+  clickLineKey,
+  clickReactionSpec,
+  isPetClickReaction,
+  type PetClickReaction,
+} from '../src/lib/pet/reactions';
+import { skinImage } from '../src/lib/pet/skins';
 
 const ISLAND =
   '/?settings=' +
   encodeURIComponent('{"island":true,"thresholds":{"warn":80,"critical":95}}');
+const EN = JSON.parse(
+  readFileSync(path.join('src', 'lib', 'i18n', 'en.json'), 'utf8')
+) as Record<string, string>;
 
 test('the island rail shows a hungry pet and its bowl count', async ({ page }) => {
   await page.addInitScript(() => {
@@ -114,4 +126,67 @@ test('desktop pet opens with stats, switches skins/forms and reacts to feeding',
   await expect(desktop.getByRole('checkbox', { name: 'Let it wander' })).toBeChecked();
   await desktop.getByRole('checkbox', { name: 'Let it wander' }).uncheck();
   await expect(desktop.getByRole('checkbox', { name: 'Let it wander' })).not.toBeChecked();
+});
+
+test('a pat rolls a reaction and expression for every bundled skin', async ({ page }) => {
+  await page.goto(ISLAND);
+  await expect(page.locator('.stage')).toHaveAttribute('data-island', 'true');
+  await page.locator('.stage').hover();
+  await page
+    .locator('.island-tools')
+    .getByRole('button', { name: 'Desktop pet', exact: true })
+    .click();
+
+  const panel = page.locator('.island-panel');
+  await expect(panel).toBeVisible();
+  const button = panel.locator('.mascot-button');
+  const reactionText = panel.locator('.reaction');
+
+  // Mochi is the default: its face must switch to the reaction's expression.
+  await button.click();
+  const mochiReaction = await button.getAttribute('data-reaction');
+  expect(isPetClickReaction(mochiReaction)).toBe(true);
+  const mochiId = mochiReaction as PetClickReaction;
+  const mochiSpec = clickReactionSpec(mochiId);
+  const mochiVariant = Number(await button.getAttribute('data-reaction-variant'));
+  expect(Number.isFinite(mochiVariant)).toBe(true);
+  await expect(button).toHaveClass(new RegExp(`reaction-${mochiId}`));
+  await expect(button).toHaveCSS('animation-name', new RegExp(`pet-react-${mochiId}$`));
+  await expect(panel.locator('.creature')).toHaveAttribute('data-status', mochiSpec.status);
+  await expect(reactionText).toHaveText(
+    EN[clickLineKey('mochi', { reaction: mochiId, variant: mochiVariant })]
+  );
+
+  // Hachiware swaps to the card that belongs to the reaction.
+  const skins = panel.getByRole('group', { name: 'Skin' });
+  await skins.getByRole('button', { name: 'Hachiware' }).click();
+  await button.click();
+  const hachiReaction = await button.getAttribute('data-reaction');
+  expect(isPetClickReaction(hachiReaction)).toBe(true);
+  const hachiId = hachiReaction as PetClickReaction;
+  const hachiSpec = clickReactionSpec(hachiId);
+  const hachiVariant = Number(await button.getAttribute('data-reaction-variant'));
+  await expect(button).toHaveClass(new RegExp(`reaction-${hachiId}`));
+  await expect(button).toHaveCSS('animation-name', new RegExp(`pet-react-${hachiId}$`));
+  const expectedCard = skinImage('hachiware', 'chibi', hachiSpec.mood);
+  expect(expectedCard).not.toBeNull();
+  await expect(panel.locator('img.skin-card')).toHaveAttribute('src', expectedCard!);
+  await expect(reactionText).toHaveText(
+    EN[clickLineKey('hachiware', { reaction: hachiId, variant: hachiVariant })]
+  );
+
+  // The DeepSeek chibi plays the reaction's H3 clip.
+  await skins.getByRole('button', { name: 'DeepSeek' }).click();
+  await button.click();
+  const fishReaction = await button.getAttribute('data-reaction');
+  expect(isPetClickReaction(fishReaction)).toBe(true);
+  const fishId = fishReaction as PetClickReaction;
+  const fishVariant = Number(await button.getAttribute('data-reaction-variant'));
+  await expect(panel.getByTestId('pet-film')).toHaveAttribute(
+    'data-clip',
+    clickReactionSpec(fishId).clip
+  );
+  await expect(reactionText).toHaveText(
+    EN[clickLineKey('deepseek-chibi', { reaction: fishId, variant: fishVariant })]
+  );
 });

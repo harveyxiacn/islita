@@ -96,6 +96,13 @@
     type PetSprite,
   } from '$lib/pet/sprite';
   import { petSituation, petVoice, sayKey, situationMood, type PetSituation } from '$lib/pet/speech';
+  import {
+    clickLineKey,
+    clickReactionSpec,
+    pickClickSeed,
+    type PetClickReaction,
+    type PetClickSeed,
+  } from '$lib/pet/reactions';
   import { petSpeech } from '$lib/pet/speech.svelte';
   import { pluginStorageKey, readPluginState, removePluginState, writePluginState } from '$lib/plugins/storage';
   import { settings } from '$lib/stores/settings.svelte';
@@ -159,6 +166,9 @@
 
   let pet = $state<PetState>(createDefaultPet());
   let reaction = $state<PetReaction | null>(null);
+  /** The current click performance (visual) and its line (held longer). */
+  let clickReaction = $state<PetClickSeed | null>(null);
+  let clickLine = $state<PetClickSeed | null>(null);
   let error = $state<string | null>(null);
   let saved = $state(false);
   let renaming = $state(false);
@@ -209,8 +219,11 @@
   let nameInput = $state<HTMLInputElement>();
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let savedTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastClickReaction: PetClickReaction | null = null;
   let reactionTimer: ReturnType<typeof setTimeout> | null = null;
   let reactionClearTimer: ReturnType<typeof setTimeout> | null = null;
+  let clickReactionTimer: ReturnType<typeof setTimeout> | null = null;
+  let clickLineTimer: ReturnType<typeof setTimeout> | null = null;
   let reactionFrame: number | null = null;
   let importToken = 0;
   const cooldownTimers: Partial<Record<PetAction, ReturnType<typeof setTimeout>>> = {};
@@ -221,8 +234,11 @@
   const theme = $derived(resolvePetTheme(pet.skin, pet.theme));
   const selectedPack = $derived(packs.find((entry) => entry.id === pet.packId) ?? null);
   const packIcon = $derived(selectedPack?.icon ? assetUrl(packIconPath(selectedPack)) : null);
+  /** The click performance currently on screen, if any. */
+  const clickSpec = $derived(clickReaction ? clickReactionSpec(clickReaction.reaction) : null);
   /** Reactions borrow the pack's pat/sleep act for a moment. */
   const packMode = $derived.by((): PackMode => {
+    if (clickSpec) return clickSpec.id === 'doze' ? 'sleep' : 'pat';
     if (reacting) return reaction === 'rest' ? 'sleep' : 'pat';
     return moodPackMode(status);
   });
@@ -241,6 +257,7 @@
   const animatable = $derived(hasPetAnimations(pet));
   /** What the H3 player shows right now; no player for sprites or packs. */
   const animClip = $derived.by((): PetAnimation => {
+    if (clickSpec) return clickSpec.clip;
     if (feasting) return 'eat';
     if (jumping) return 'jump';
     if (reaction === 'rest') return 'sleep';
@@ -254,12 +271,22 @@
   const bundledImage = $derived(
     sprite
       ? null
-      : skinImage(pet.skin, pet.deepseekForm, reaction ?? (event ? situationMood(event) : status))
+      : skinImage(
+          pet.skin,
+          pet.deepseekForm,
+          clickSpec?.mood ?? reaction ?? (event ? situationMood(event) : status)
+        )
   );
+  /** Mochi has no cards; its click expression comes from the same spec. */
+  const mochiStatus = $derived(clickSpec?.status ?? status);
   const xpPercent = $derived(nextXp > 0 ? Math.min(100, (pet.xp / nextXp) * 100) : 0);
   const mascotLabel = $derived(`${t('plugin.pet.pat')}: ${pet.name}`);
   const reactionText = $derived(
-    reaction ? tDyn(sayKey(voice, reaction), { name: pet.name }) : speechText
+    clickLine
+      ? tDyn(clickLineKey(voice, clickLine), { name: pet.name })
+      : reaction
+        ? tDyn(sayKey(voice, reaction), { name: pet.name })
+        : speechText
   );
   const stats = $derived.by(() => [
     { id: 'fullness' as const, label: t('plugin.pet.hunger'), value: pet.fullness },
@@ -291,17 +318,19 @@
     }, 2200);
   }
 
-  function persistNow(action?: PetAction) {
+  function persistNow(action?: PetAction, click?: PetClickSeed | null) {
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
     writePluginState(PET_PLUGIN_ID, copyState(pet));
     // The detached window may be open; it adopts the panel's newer state and
-    // replays the same interaction (the rice cutscene included).
+    // replays the same interaction (the rice cutscene and the rolled click
+    // reaction included).
     void emitWindowEvent('pet', 'pet-state', {
       state: copyState(pet),
       action: action ?? null,
+      click: click ?? null,
     });
   }
 
@@ -348,8 +377,22 @@
     });
   }
 
+  function clearClick() {
+    if (clickReactionTimer) {
+      clearTimeout(clickReactionTimer);
+      clickReactionTimer = null;
+    }
+    if (clickLineTimer) {
+      clearTimeout(clickLineTimer);
+      clickLineTimer = null;
+    }
+    clickReaction = null;
+    clickLine = null;
+  }
+
   /** Show an action/offline line, then fall back to the live situation line. */
   function setReaction(kind: PetReaction, holdMs = 6000) {
+    clearClick();
     reaction = kind;
     if (reactionClearTimer) clearTimeout(reactionClearTimer);
     reactionClearTimer = setTimeout(() => {
@@ -358,12 +401,32 @@
     }, holdMs);
   }
 
+  /**
+   * Run one rolled click performance. The pose clears when the H3/CSS beat
+   * ends, while the line stays a little longer so it remains readable.
+   */
+  function setClickReaction(seed: PetClickSeed) {
+    clearClick();
+    lastClickReaction = seed.reaction;
+    clickReaction = seed;
+    clickLine = seed;
+    clickReactionTimer = setTimeout(() => {
+      clickReactionTimer = null;
+      clickReaction = null;
+    }, clickReactionSpec(seed.reaction).holdMs);
+    clickLineTimer = setTimeout(() => {
+      clickLineTimer = null;
+      clickLine = null;
+    }, 6000);
+  }
+
   function clearReaction() {
     reaction = null;
     if (reactionClearTimer) {
       clearTimeout(reactionClearTimer);
       reactionClearTimer = null;
     }
+    clearClick();
   }
 
   function setCooldown(action: PetAction) {
@@ -418,20 +481,24 @@
     const advanced = advancePet(pet, now).state;
     const result = applyAction(advanced, action, now);
     pet = result.state;
-    setReaction(action);
+    // A pat rolls a reaction; the other three actions keep their one line.
+    const seed = action === 'pat' ? pickClickSeed(voice, lastClickReaction) : null;
+    if (seed) {
+      clearReaction();
+      setClickReaction(seed);
+    } else {
+      setReaction(action);
+      triggerReaction();
+    }
     error = null;
     setCooldown(action);
-    triggerReaction();
-    if (action === 'feed') {
-      // Feeding also runs in the detached window, so persist and announce it
-      // immediately instead of waiting for the drag coalescer.
-      startFeast();
-      persistNow('feed');
-      markSaved();
-    } else {
-      if (action === 'play') startJump();
-      scheduleSave();
-    }
+    if (action === 'feed') startFeast();
+    if (action === 'play') startJump();
+    // All four interactions are persisted now: the detached window replays
+    // the action (and the rolled reaction) instead of waiting for the drag
+    // coalescer. The save toast stays reserved for feeding.
+    persistNow(action, seed);
+    if (action === 'feed') markSaved();
   }
 
   function startRename() {
@@ -1054,6 +1121,14 @@
         clearTimeout(reactionClearTimer);
         reactionClearTimer = null;
       }
+      if (clickReactionTimer) {
+        clearTimeout(clickReactionTimer);
+        clickReactionTimer = null;
+      }
+      if (clickLineTimer) {
+        clearTimeout(clickLineTimer);
+        clickLineTimer = null;
+      }
       if (reactionFrame !== null) {
         cancelAnimationFrame(reactionFrame);
         reactionFrame = null;
@@ -1097,7 +1172,7 @@
     <PetScene theme={theme} />
     <p
       class="reaction"
-      data-situation={reaction ?? situation}
+      data-situation={clickLine?.reaction ?? reaction ?? situation}
       aria-live="polite"
       aria-atomic="true"
       title={reactionText}
@@ -1105,7 +1180,7 @@
       {reactionText}
     </p>
     <button
-      class="mascot-button"
+      class="mascot-button {clickSpec && !animatable ? `reaction-${clickSpec.id}` : ''}"
       class:reacting
       class:filming={animatable}
       type="button"
@@ -1113,6 +1188,8 @@
       disabled={cooldowns.pat}
       aria-label={mascotLabel}
       title={mascotLabel}
+      data-reaction={clickSpec?.id ?? undefined}
+      data-reaction-variant={clickReaction?.variant ?? undefined}
     >
       {#if sprite}
         {#if sprite.frames === 4}
@@ -1150,7 +1227,7 @@
           data-form={pet.skin === 'deepseek' ? pet.deepseekForm : undefined}
         />
       {:else}
-        <span class="mochi-art"><Mochi status={status} /></span>
+        <span class="mochi-art"><Mochi status={mochiStatus} /></span>
       {/if}
     </button>
   </div>
@@ -1828,6 +1905,33 @@
     animation: pet-bounce 520ms var(--ease-out);
   }
 
+  /* Click reactions for the static skins. The H3 chibi is excluded: its film
+     already performs the reaction. Feeding and the other actions keep the
+     short generic bounce above. */
+  .mascot-button.reaction-nuzzle {
+    animation: pet-react-nuzzle 1.3s ease-in-out 2;
+  }
+
+  .mascot-button.reaction-bounce {
+    animation: pet-react-bounce 0.62s var(--ease-out) 2;
+  }
+
+  .mascot-button.reaction-zoomies {
+    animation: pet-react-zoomies 0.32s ease-in-out infinite;
+  }
+
+  .mascot-button.reaction-munch {
+    animation: pet-react-munch 0.32s ease-in-out infinite;
+  }
+
+  .mascot-button.reaction-doze {
+    animation: pet-react-doze 2.6s ease-in-out infinite;
+  }
+
+  .mascot-button.reaction-sulk {
+    animation: pet-react-sulk 0.44s ease-in-out 5;
+  }
+
   .skin-card,
   .sprite-portrait,
   .sprite-strip {
@@ -1898,9 +2002,16 @@
   .skin-card {
     border-radius: 0.7rem;
     object-fit: cover;
+    transform-origin: 50% 100%;
+    animation: pet-card-idle 4.6s ease-in-out infinite;
     box-shadow:
       0 0.3rem 0.8rem rgb(0 0 0 / 0.22),
       0 0 0 1px rgb(255 255 255 / 0.14) inset;
+  }
+
+  /* The button carries the reaction beat; a second float would double it. */
+  .mascot-button[data-reaction] .skin-card {
+    animation: none;
   }
 
   .sprite-portrait {
@@ -1927,6 +2038,97 @@
     }
     100% {
       transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes pet-card-idle {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0);
+    }
+    50% {
+      transform: translateY(-1.5px) rotate(-0.4deg);
+    }
+  }
+
+  @keyframes pet-react-nuzzle {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0);
+    }
+    28% {
+      transform: translateY(-2px) rotate(-2.6deg);
+    }
+    58% {
+      transform: translateY(0) rotate(2.2deg);
+    }
+    80% {
+      transform: translateY(-1px) rotate(-1deg);
+    }
+  }
+
+  @keyframes pet-react-bounce {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    32% {
+      transform: translateY(-0.5rem) scale(1.03);
+    }
+    62% {
+      transform: translateY(0.04rem) scale(0.99);
+    }
+  }
+
+  @keyframes pet-react-zoomies {
+    0%,
+    100% {
+      transform: translateX(0) rotate(0);
+    }
+    25% {
+      transform: translateX(-4px) rotate(-2deg);
+    }
+    75% {
+      transform: translateX(4px) rotate(2deg);
+    }
+  }
+
+  @keyframes pet-react-munch {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(1.5px) scale(0.985, 0.975);
+    }
+  }
+
+  @keyframes pet-react-doze {
+    0%,
+    100% {
+      transform: translateY(2px) rotate(-1.2deg) scale(0.985);
+    }
+    50% {
+      transform: translateY(3px) rotate(1.2deg) scale(0.98);
+    }
+  }
+
+  @keyframes pet-react-sulk {
+    0%,
+    100% {
+      transform: translateY(2px) rotate(0) scale(0.985);
+    }
+    20% {
+      transform: translateY(2px) rotate(-3deg) scale(0.985);
+    }
+    40% {
+      transform: translateY(1px) rotate(3deg) scale(0.985);
+    }
+    60% {
+      transform: translateY(2px) rotate(-2deg) scale(0.985);
+    }
+    80% {
+      transform: translateY(1px) rotate(1.5deg) scale(0.985);
     }
   }
 
@@ -2942,7 +3144,9 @@
   @media (prefers-reduced-motion: reduce) {
     .sprite-strip,
     .film-art.leaping,
-    .mascot-button.reacting {
+    .mascot-button.reacting,
+    .mascot-button[class*='reaction-'],
+    .skin-card {
       animation: none !important;
     }
 

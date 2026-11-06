@@ -2,8 +2,19 @@
 // Everything is local — the sprite comes from the saved pet state and every
 // action is applied with the same pure reducer as the island panel.
 import { test, expect, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import {
+  clickLineKey,
+  clickReactionSpec,
+  isPetClickReaction,
+  type PetClickReaction,
+} from '../src/lib/pet/reactions';
 
 const PET_URL = '/pet?settings=' + encodeURIComponent('{"petOnDesktop":true}');
+const EN = JSON.parse(
+  readFileSync(path.join('src', 'lib', 'i18n', 'en.json'), 'utf8')
+) as Record<string, string>;
 
 interface Seed {
   skin: string;
@@ -53,9 +64,29 @@ test('the detached pet renders the saved skin, walks and reacts to a pat', async
   await expect(film).toHaveClass(/ready/);
   await expect(film.locator('img.poster')).toHaveCSS('opacity', '0');
 
-  // A click without pointer movement is a pat, not a drag.
+  // A click without pointer movement is a pat, not a drag. The pat rolls one
+  // of six performances; the line must belong to the reaction on screen.
+  const figure = page.locator('.pet-figure');
   await petButton.click();
-  await expect(page.locator('.bubble')).toHaveText('Mm... one more pat.');
+  const firstReaction = await figure.getAttribute('data-reaction');
+  expect(isPetClickReaction(firstReaction)).toBe(true);
+  const firstVariant = Number(await figure.getAttribute('data-reaction-variant'));
+  expect(Number.isFinite(firstVariant)).toBe(true);
+  await expect(page.locator('.bubble')).toHaveText(
+    EN[
+      clickLineKey('deepseek-chibi', {
+        reaction: firstReaction as PetClickReaction,
+        variant: firstVariant,
+      })
+    ]
+  );
+
+  // Two pats in a row never repeat the same performance.
+  await page.waitForTimeout(500);
+  await petButton.click();
+  const secondReaction = await figure.getAttribute('data-reaction');
+  expect(isPetClickReaction(secondReaction)).toBe(true);
+  expect(secondReaction).not.toBe(firstReaction);
 
   await page.waitForTimeout(700);
   await petButton.click({ button: 'right' });
@@ -69,10 +100,12 @@ test('the detached pet renders the saved skin, walks and reacts to a pat', async
   await expect(film).toHaveAttribute('data-src', /\/pet\/animations\/eat-sheet\.webp$/);
   const strip = film.locator('img.sheet');
   await expect(strip).toBeVisible();
-  const firstFrame = await strip.evaluate((element) => getComputedStyle(element).transform);
-  await page.waitForTimeout(250);
-  const laterFrame = await strip.evaluate((element) => getComputedStyle(element).transform);
-  expect(laterFrame).not.toBe(firstFrame);
+  const frameTransform = () =>
+    strip.evaluate((element) => getComputedStyle(element).transform);
+  const firstFrame = await frameTransform();
+  // Decoding the strip and starting its rAF loop can take a moment under a
+  // fully parallel run; poll instead of assuming one 250 ms step.
+  await expect.poll(frameTransform, { timeout: 5000 }).not.toBe(firstFrame);
   await expect(page.locator('.pet-figure')).toHaveClass(/chewing/);
   await expect(page.locator('.pet-figure')).toHaveClass(/filming/);
   await expect(page.getByTestId('desktop-feast')).toHaveCount(0);
@@ -159,11 +192,29 @@ test('the context menu toggles wandering and hides the pet from the desktop', as
   await expect(menu).toBeHidden();
 });
 
-test('the original mascot uses the inline SVG', async ({ page }) => {
+test('the original mascot uses the inline SVG and reacts to a pat', async ({ page }) => {
   await seed(page, { skin: 'mochi', form: 'chibi', name: 'Mochi' });
   await page.goto(PET_URL);
-  await expect(page.getByRole('button', { name: 'Pet: Mochi' })).toBeVisible();
-  await expect(page.locator('svg.creature')).toBeVisible();
+  const petButton = page.getByRole('button', { name: 'Pet: Mochi' });
+  await expect(petButton).toBeVisible();
+  const creature = page.locator('svg.creature');
+  await expect(creature).toBeVisible();
+
+  await petButton.click();
+  const figure = page.locator('.pet-figure');
+  const reaction = await figure.getAttribute('data-reaction');
+  expect(isPetClickReaction(reaction)).toBe(true);
+  const id = reaction as PetClickReaction;
+  await expect(creature).toHaveAttribute('data-status', clickReactionSpec(id).status);
+  const beats: Record<PetClickReaction, string> = {
+    nuzzle: 'pet-nuzzle',
+    bounce: 'pet-hop',
+    zoomies: 'pet-zoomies',
+    munch: 'pet-chew',
+    doze: 'pet-sleep',
+    sulk: 'pet-sulk',
+  };
+  await expect(figure).toHaveCSS('animation-name', new RegExp(`${beats[id]}$`));
 });
 
 test('a custom portrait sprite takes precedence over the skin', async ({ page }) => {

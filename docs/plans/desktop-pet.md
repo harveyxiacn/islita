@@ -119,6 +119,40 @@ icon in the island rail; `PetPanel.svelte` calls `seen()` while it is mounted,
 clearing it. The pet panel may show a newer island-wide event while a ring's
 popover speaks about that provider, but both use the same voice and line table.
 
+## Click reactions
+
+A pat is the pet's most frequent interaction, so it is not one fixed line and
+pose. `src/lib/pet/reactions.ts` defines six short performances — `nuzzle`,
+`bounce`, `zoomies`, `munch`, `doze` and `sulk` — with three original lines per
+voice under `plugin.pet.reaction.<voice>.<reaction>.1…3`. A click rolls one
+reaction and one variant; the previous reaction is excluded when another is
+available, so two pats in a row never look the same. The line variant is rolled
+independently for extra variety.
+
+The same reaction is rendered by every skin and every surface:
+
+| Reaction | DeepSeek chibi (H3) | Hachiware card | Mochi face | Static desktop beat |
+|---|---|---|---|---|
+| `nuzzle` | happy | pat | happy | gentle lean |
+| `bounce` | jump | happy | happy | hop |
+| `zoomies` | run | play | happy | quick side-to-side |
+| `munch` | eat | feed | hungry | chew |
+| `doze` | sleep | tired | tired | sleepy sway |
+| `sulk` | sad | bored | bored | head shake |
+
+The bundled chibi plays the matching film. Hachiware and the DeepSeek
+transformed form swap to the closest supplied sticker card; the panel adds a
+short CSS beat, and Hachiware's card keeps a slow idle float when it is not
+reacting. Mochi swaps its inline expression and uses the same CSS beat. The
+detached window maps the reaction onto its existing modes, so Hachiware and the
+transformed form change their full-body frame while Mochi changes expression.
+Reduced motion keeps the expression/clip swap but drops the extra CSS beats.
+
+The island panel sends the rolled seed with `pet-state {state, action, click}`;
+the detached window replays exactly that reaction instead of rolling a second
+one. A pat from the detached window still speaks there; the island rail keeps
+its one-line `pat` summary for the questionnaire popover.
+
 ## Generated performances
 
 The bundled DeepSeek chibi is drawn by nine MiniMax-H3 performances, one per

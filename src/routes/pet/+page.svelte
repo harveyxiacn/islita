@@ -90,6 +90,14 @@
     sayKey,
     type PetSituation,
   } from '$lib/pet/speech';
+  import {
+    clickLineKey,
+    clickReactionSpec,
+    pickClickSeed,
+    sanitizeClickSeed,
+    type PetClickReaction,
+    type PetClickSeed,
+  } from '$lib/pet/reactions';
   import { readPluginState, writePluginState } from '$lib/plugins/storage';
   import { settings } from '$lib/stores/settings.svelte';
   import { snapshot } from '$lib/stores/snapshot.svelte';
@@ -129,12 +137,14 @@
   let pose = $state<'happy' | 'sleep' | null>(null);
   let feasting = $state(false);
   let jumping = $state(false);
+  let clickReaction = $state<PetClickSeed | null>(null);
   let bubbleKey = $state<string | null>(null);
   let packs = $state<PetPack[]>([]);
   let packsLoaded = $state(false);
 
   let lastActiveAt = Date.now();
   let lastActionAt = 0;
+  let lastClickReaction: PetClickReaction | null = null;
   let pressed = false;
   let pointerId = -1;
   let downX = 0;
@@ -145,6 +155,7 @@
   const pendingMove = { dx: 0, dy: 0 };
 
   let poseTimer: ReturnType<typeof setTimeout> | null = null;
+  let clickTimer: ReturnType<typeof setTimeout> | null = null;
   let feastTimer: ReturnType<typeof setTimeout> | null = null;
   let jumpTimer: ReturnType<typeof setTimeout> | null = null;
   let bubbleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -166,6 +177,8 @@
       ? null
       : desktopArt(pet.skin, pet.deepseekForm)
   );
+  /** The click performance currently on screen, if any. */
+  const clickSpec = $derived(clickReaction ? clickReactionSpec(clickReaction.reaction) : null);
   /** Too little rice or a nearly empty quota: the fish looks glum at rest. */
   const sad = $derived(
     !dragging &&
@@ -177,6 +190,9 @@
         situation === 'providerDown')
   );
   const mode = $derived.by((): PetDesktopMode => {
+    // A pat reaction outranks wandering and the ambient sad/sleep poses, but
+    // not a drag: picking the pet up always stops the performance.
+    if (clickSpec) return clickSpec.mode;
     if (dragging) return 'drag';
     if (sleeping || pose === 'sleep') return 'sleep';
     if (feasting) return 'eat';
@@ -208,7 +224,13 @@
   });
   const artUrl = $derived(artForMode(art, mode));
   const mochiStatus = $derived<PetStatus>(
-    mode === 'sleep' ? 'tired' : mode === 'happy' || mode === 'jump' ? 'happy' : petStatus(pet)
+    clickSpec
+      ? clickSpec.status
+      : mode === 'sleep'
+        ? 'tired'
+        : mode === 'happy' || mode === 'jump'
+          ? 'happy'
+          : petStatus(pet)
   );
   const bubbleText = $derived(bubbleKey ? tDyn(bubbleKey, { name: pet.name }) : null);
   const feastLabel = $derived(t('plugin.pet.rice.eating', { name: pet.name }));
@@ -268,13 +290,17 @@
     bubbleKey = null;
   }
 
-  function speakSituation(next: PetSituation, holdMs = 7000): void {
-    bubbleKey = sayKey(voice, next);
+  function speakKey(key: string, holdMs = 7000): void {
+    bubbleKey = key;
     if (bubbleTimer) clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(() => {
       bubbleTimer = null;
       bubbleKey = null;
     }, holdMs);
+  }
+
+  function speakSituation(next: PetSituation, holdMs = 7000): void {
+    speakKey(sayKey(voice, next), holdMs);
   }
 
   /** Show the bowl briefly; a second feed restarts the full hold. */
@@ -332,6 +358,36 @@
     }
   }
 
+  /** Stop the current click performance without touching the speech bubble. */
+  function clearClickReaction(): void {
+    if (clickTimer) {
+      clearTimeout(clickTimer);
+      clickTimer = null;
+    }
+    clickReaction = null;
+  }
+
+  /**
+   * Play one click performance. `seed` comes from this window or, when the
+   * island panel was clicked, from the event payload so both windows show the
+   * same reaction instead of rolling separately.
+   */
+  function startClickReaction(seed: PetClickSeed): void {
+    const spec = clickReactionSpec(seed.reaction);
+    lastClickReaction = seed.reaction;
+    lastActiveAt = Date.now();
+    sleeping = false;
+    setPose(null);
+    clickReaction = seed;
+    if (clickTimer) clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => {
+      clickTimer = null;
+      clickReaction = null;
+      checkSleep();
+    }, spec.holdMs);
+    speakKey(clickLineKey(voice, seed), 5200);
+  }
+
   function checkSleep(): void {
     const busy = hovering || menuOpen || dragging || pressing || feasting || jumping;
     sleeping = shouldSleep(pet.energy, Date.now() - lastActiveAt, busy);
@@ -346,14 +402,25 @@
     lastActiveAt = now;
     const advanced = advancePet(pet, now).state;
     pet = applyAction(advanced, action, now).state;
-    if (action === 'feed') startFeast();
-    if (action === 'play') startJump();
-    const hold = action === 'rest' ? 1900 : action === 'pat' ? 1500 : 0;
-    setPose(action === 'rest' ? 'sleep' : action === 'pat' ? 'happy' : null, hold);
-    speakSituation(action, 5200);
+    // A pat rolls a reaction; the other three actions keep their one line.
+    const seed = action === 'pat' ? pickClickSeed(voice, lastClickReaction) : null;
+    if (seed) {
+      startClickReaction(seed);
+    } else {
+      clearClickReaction();
+      if (action === 'feed') startFeast();
+      if (action === 'play') startJump();
+      const hold = action === 'rest' ? 1900 : 0;
+      setPose(action === 'rest' ? 'sleep' : null, hold);
+      speakSituation(action, 5200);
+    }
     checkSleep();
     persistNow();
-    void emitWindowEvent('sidebar', 'pet-state', { state: copyState(pet), action });
+    void emitWindowEvent('sidebar', 'pet-state', {
+      state: copyState(pet),
+      action,
+      click: seed,
+    });
   }
 
   function storedPosition(): PetDesktopPosition | null {
@@ -406,6 +473,7 @@
     // The bowl is anchored to the floor; carried away it would look detached.
     stopFeast();
     stopJump();
+    clearClickReaction();
     setPose(null);
     void petSetDragging(true);
   }
@@ -659,26 +727,35 @@
       speakSituation(next, 9000);
     }).then((un) => (disposed ? un() : (unEvent = un)));
 
-    void listen<{ state?: PetState; action?: string }>('pet-state', (payload) => {
-      if (!payload || typeof payload !== 'object') return;
-      adopt(payload.state);
-      ensurePack(payload.state?.packId);
-      if (payload.action && isPetAction(payload.action)) {
-        // An interaction in the island panel plays out here too, so the two
-        // windows show one pet rather than two independent copies.
-        lastNotable = null;
-        lastActiveAt = Date.now();
-        if (payload.action === 'feed') startFeast();
-        if (payload.action === 'play') startJump();
-        const hold = payload.action === 'rest' ? 1900 : payload.action === 'pat' ? 1500 : 0;
-        setPose(
-          payload.action === 'rest' ? 'sleep' : payload.action === 'pat' ? 'happy' : null,
-          hold
-        );
-        speakSituation(payload.action, 5200);
-        checkSleep();
+    void listen<{ state?: PetState; action?: string; click?: unknown }>(
+      'pet-state',
+      (payload) => {
+        if (!payload || typeof payload !== 'object') return;
+        adopt(payload.state);
+        ensurePack(payload.state?.packId);
+        if (payload.action && isPetAction(payload.action)) {
+          // An interaction in the island panel plays out here too, so the two
+          // windows show one pet rather than two independent copies. A pat
+          // carries the panel's rolled reaction; an older panel that sends no
+          // seed still gets a locally rolled one.
+          lastNotable = null;
+          lastActiveAt = Date.now();
+          if (payload.action === 'pat') {
+            const seed =
+              sanitizeClickSeed(payload.click) ?? pickClickSeed(voice, lastClickReaction);
+            startClickReaction(seed);
+          } else {
+            clearClickReaction();
+            if (payload.action === 'feed') startFeast();
+            if (payload.action === 'play') startJump();
+            const hold = payload.action === 'rest' ? 1900 : 0;
+            setPose(payload.action === 'rest' ? 'sleep' : null, hold);
+            speakSituation(payload.action, 5200);
+          }
+          checkSleep();
+        }
       }
-    }).then((un) => (disposed ? un() : (unState = un)));
+    ).then((un) => (disposed ? un() : (unState = un)));
 
     // The task notification is backend-wide, so this window hears it directly.
     void onTaskCompleted(() => {
@@ -710,6 +787,7 @@
       window.removeEventListener('pointerup', onGlobalPointerUp);
       window.removeEventListener('keydown', onKeyDown);
       if (poseTimer) clearTimeout(poseTimer);
+      if (clickTimer) clearTimeout(clickTimer);
       if (feastTimer) clearTimeout(feastTimer);
       if (jumpTimer) clearTimeout(jumpTimer);
       if (bubbleTimer) clearTimeout(bubbleTimer);
@@ -812,6 +890,8 @@
         class:running={motion.running}
         class:chewing={feasting}
         class:filming={animatable}
+        data-reaction={clickSpec?.id ?? undefined}
+        data-reaction-variant={clickReaction?.variant ?? undefined}
       >
         {#if animatable}
           <span class="animation-figure">
@@ -1017,6 +1097,21 @@
     animation: pet-dangle 1.9s ease-in-out infinite;
   }
 
+  /* Static skins have no generated film, so their click reactions get a
+     bespoke beat instead of the generic happy hop / sad sway. The jump, eat
+     and sleep reactions already read correctly through their mode. */
+  .pet-figure:not(.filming)[data-reaction='nuzzle'] {
+    animation: pet-nuzzle 1.3s ease-in-out 2;
+  }
+
+  .pet-figure:not(.filming)[data-reaction='zoomies'] {
+    animation: pet-zoomies 0.32s ease-in-out infinite;
+  }
+
+  .pet-figure:not(.filming)[data-reaction='sulk'] {
+    animation: pet-sulk 0.44s ease-in-out 5;
+  }
+
   /* Overrides the idle/walk bob for the six seconds of the rice bowl. */
   .pet-figure.chewing {
     animation: pet-chew 0.62s ease-in-out infinite;
@@ -1181,6 +1276,54 @@
     }
   }
 
+  @keyframes pet-nuzzle {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0);
+    }
+    28% {
+      transform: translateY(-2px) rotate(-2.6deg);
+    }
+    58% {
+      transform: translateY(0) rotate(2.2deg);
+    }
+    80% {
+      transform: translateY(-1px) rotate(-1deg);
+    }
+  }
+
+  @keyframes pet-zoomies {
+    0%,
+    100% {
+      transform: translateX(0) rotate(0);
+    }
+    25% {
+      transform: translateX(-4px) rotate(-2deg);
+    }
+    75% {
+      transform: translateX(4px) rotate(2deg);
+    }
+  }
+
+  @keyframes pet-sulk {
+    0%,
+    100% {
+      transform: translateY(2px) rotate(0) scale(0.99);
+    }
+    20% {
+      transform: translateY(2px) rotate(-3deg) scale(0.99);
+    }
+    40% {
+      transform: translateY(1px) rotate(3deg) scale(0.99);
+    }
+    60% {
+      transform: translateY(2px) rotate(-2deg) scale(0.99);
+    }
+    80% {
+      transform: translateY(1px) rotate(1.5deg) scale(0.99);
+    }
+  }
+
   @keyframes pet-chew {
     0%,
     100% {
@@ -1317,6 +1460,9 @@
     .pet-figure.mode-happy,
     .pet-figure.mode-drag,
     .pet-figure.chewing,
+    .pet-figure[data-reaction='nuzzle'],
+    .pet-figure[data-reaction='zoomies'],
+    .pet-figure[data-reaction='sulk'],
     .sprite-strip,
     .menu {
       animation: none;
